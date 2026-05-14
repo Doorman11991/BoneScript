@@ -1,0 +1,24 @@
+{
+  "name": "bonescript-compiler",
+  "version": "0.2.0",
+  "description": "BoneScript Reference Compiler — derived from formal spec",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "bone": "./dist/cli.js"
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*.ts"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/cli.ts",
+    "test": "ts-node src/test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.0",
+    "typescript": "5.3.3",
+    "ts-node": "10.9.2"
+  }
+}

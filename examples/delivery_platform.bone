@@ -1,0 +1,192 @@
+// BoneScript Example: Delivery Platform
+// Demonstrates Leap 1 (pipelines) and Leap 2 (algorithm catalog).
+
+system DeliveryPlatform {
+  domain: marketplace
+
+  // â”€â”€â”€ Entities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  entity Driver {
+    owns: [
+      name: string,
+      home_node: string,
+      capacity: uint,
+      current_load: uint
+    ]
+    constraints: [
+      name.length in 1..100,
+      capacity >= 1,
+      current_load <= capacity
+    ]
+    states: available -> assigned -> delivering -> available | offline
+    auth: jwt
+  }
+
+  entity Order {
+    owns: [
+      customer_id: uuid,
+      pickup: string,
+      dropoff: string,
+      weight: uint,
+      status: string
+    ]
+    constraints: [
+      weight > 0,
+      weight <= 100,
+      status in ["pending", "assigned", "in_transit", "delivered", "cancelled"]
+    ]
+    states: pending -> assigned -> in_transit -> delivered | cancelled
+  }
+
+  // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  store DriverStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      name: string,
+      home_node: string,
+      capacity: uint,
+      current_load: uint,
+      state: string
+    }
+  }
+
+  store OrderStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      customer_id: uuid,
+      pickup: string,
+      dropoff: string,
+      weight: uint,
+      status: string
+    }
+  }
+
+  // â”€â”€â”€ Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  event OrderAssigned {
+    payload: {
+      order_id: uuid,
+      driver_id: uuid,
+      assigned_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 1d
+  }
+
+  event OrderDelivered {
+    payload: {
+      order_id: uuid,
+      delivered_at: timestamp
+    }
+    delivery: exactly_once
+    ttl: 30d
+  }
+
+  // â”€â”€â”€ Capabilities (traditional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  capability create_order(customer_id: uuid, pickup: string, dropoff: string, weight: uint) {
+    requires: [weight > 0, weight <= 100]
+    effects: []
+    sync: transactional
+  }
+
+  // â”€â”€â”€ Capabilities (Leap 1: Pipelines) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // A pipeline that validates â†’ reserves â†’ notifies, with rollback on failure.
+  capability fulfill_order(order: Order) {
+    requires: [order.status == "pending"]
+    pipeline: {
+      validate_order(order)
+      reserve_inventory(order) as reservation
+      assign_driver(order) as assignment
+      notify_customer(order, assignment)
+      on_error: rollback
+    }
+    sync: transactional
+    timeout: 30s
+  }
+
+  // A parallel pipeline â€” runs all steps concurrently.
+  capability gather_metrics(driver: Driver) {
+    parallel: {
+      fetch_active_orders(driver)
+      fetch_recent_ratings(driver)
+      fetch_earnings_today(driver)
+    }
+    returns: json
+    sync: eventual
+  }
+
+  // â”€â”€â”€ Capabilities (Leap 2: Algorithms) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // Find shortest delivery route using Dijkstra from the catalog.
+  capability find_route(start: string, end: string) {
+    algorithm: shortest_path using {
+      graph: road_network,
+      source: start,
+      target: end
+    }
+    returns: json
+    sync: eventual
+    idempotent: true
+  }
+
+  // Match orders to drivers using bipartite matching.
+  capability assign_orders(orders: list<Order>, drivers: list<Driver>) {
+    algorithm: bipartite_matching using {
+      left: orders,
+      right: drivers,
+      edges: feasibility_graph
+    }
+    returns: json
+    sync: transactional
+  }
+
+  // Rank drivers by performance score.
+  capability rank_drivers(drivers: list<Driver>) {
+    algorithm: rank_by using {
+      items: drivers,
+      score_fn: driver_score,
+      order: "desc"
+    }
+    returns: list<Driver>
+    sync: eventual
+    idempotent: true
+  }
+
+  // Compute delivery time percentile.
+  capability sla_p95(durations: list<uint>) {
+    algorithm: percentile using {
+      values: durations,
+      k: 95
+    }
+    returns: float
+    sync: eventual
+    idempotent: true
+  }
+
+  // Hash customer ID to a delivery zone.
+  capability assign_zone(customer_id: uuid, zones: list<string>) {
+    algorithm: consistent_hash using {
+      key: customer_id,
+      nodes: zones,
+      replicas: 100
+    }
+    returns: string
+    sync: eventual
+    idempotent: true
+  }
+
+  // Schedule deliveries across drivers using round-robin.
+  capability distribute_workload(orders: list<Order>, drivers: list<Driver>) {
+    algorithm: round_robin using {
+      items: orders,
+      workers: drivers
+    }
+    returns: json
+    sync: eventual
+  }
+}
