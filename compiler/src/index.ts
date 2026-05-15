@@ -47,6 +47,7 @@ export { emitZodSchemas } from "./emit_zod";
 export { emitPostmanCollection } from "./emit_postman";
 export { emitSeedFile } from "./emit_seed";
 export { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
+export { emitAdminPanel } from "./emit_admin";
 
 /**
  * Convenience function: compile a .bone source string to files.

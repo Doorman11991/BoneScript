@@ -38,6 +38,7 @@ import { emitZodSchemas } from "./emit_zod";
 import { emitPostmanCollection } from "./emit_postman";
 import { emitSeedFile } from "./emit_seed";
 import { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
+import { emitAdminPanel } from "./emit_admin";
 
 function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
@@ -204,6 +205,9 @@ export class FullEmitter {
     // 17. Audit log
     files.push({ path: "migrations/audit_log.sql", content: emitAuditSchema(), language: "sql", source_module: "infra" });
     files.push({ path: "src/audit.ts", content: emitAuditMiddleware(system), language: "typescript", source_module: "infra" });
+
+    // 18. Admin panel
+    files.push({ path: "admin/index.html", content: emitAdminPanel(system), language: "yaml", source_module: "admin" });
 
     // 10. Source map + debug handler
     files.push({ path: `${system.name}.bone.map`, content: emitSourceMapFile(system, `${system.name}.bone`), language: "json", source_module: "root" });

@@ -217,6 +217,11 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   lines.push(`import { query, queryOne, execute, pool } from "../db";`);
   lines.push(`import { eventBus } from "../events";`);
   lines.push(`import { requireAuth, AuthContext } from "../auth";`);
+  lines.push(`import rateLimit from "express-rate-limit";`);
+  // Only import audit if module has audit: true
+  if (mod.config["audit"]) {
+    lines.push(`import { auditLog } from "../audit";`);
+  }
   lines.push(`import { logger } from "../logger";`);
   lines.push(`import { counter } from "../metrics";`);
   lines.push(`import * as __algorithms from "../algorithms";`);
@@ -242,10 +247,22 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   lines.push(`export const ${toCamelCase(routeBase)}Router = Router();`);
   lines.push(``);
 
+  // Per-module rate limiter (from policy declaration)
+  const modRateLimit = typeof mod.config["rate_limit"] === "number" && (mod.config["rate_limit"] as number) > 0
+    ? mod.config["rate_limit"] as number : 0;
+  const modRateLimitWindowMs = typeof mod.config["rate_limit_window_ms"] === "number"
+    ? mod.config["rate_limit_window_ms"] as number : 60000;
+  if (modRateLimit > 0) {
+    lines.push(`// Rate limiter from policy declaration`);
+    lines.push(`const __routeRateLimit = rateLimit({ windowMs: ${modRateLimitWindowMs}, max: ${modRateLimit}, standardHeaders: true, legacyHeaders: false });`);
+    lines.push(``);
+  }
+
   // CREATE
   const insertFields = entityModel.fields.filter(f => f.name !== "id" && f.name !== "created_at" && f.name !== "updated_at");
   lines.push(`// CREATE`);
-  lines.push(`${toCamelCase(routeBase)}Router.post("/", requireAuth, async (req: Request, res: Response) => {`);
+  const __crudMiddlewares = modRateLimit > 0 ? "__routeRateLimit, requireAuth" : "requireAuth";
+  lines.push(`${toCamelCase(routeBase)}Router.post("/", ${__crudMiddlewares}, async (req: Request, res: Response) => {`);
   lines.push(`  try {`);
   lines.push(`    const id = uuid();`);
   lines.push(`    const { ${insertFields.map(f => f.name).join(", ")} } = req.body;`);
@@ -270,7 +287,7 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
 
   // READ
   lines.push(`// READ`);
-  lines.push(`${toCamelCase(routeBase)}Router.get("/:id", requireAuth, async (req: Request, res: Response) => {`);
+  lines.push(`${toCamelCase(routeBase)}Router.get("/:id", ${__crudMiddlewares}, async (req: Request, res: Response) => {`);
   lines.push(`  try {`);
   lines.push(`    const row = await queryOne(\`SELECT * FROM ${tableName} WHERE id = $1\`, [req.params.id]);`);
   lines.push(`    if (!row) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });`);
@@ -284,7 +301,7 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   // LIST — with optional JOINs for has_one/belongs_to relations
   const joinRelations = mod.relations.filter(r => r.kind === "has_one" || r.kind === "belongs_to");
   lines.push(`// LIST`);
-  lines.push(`${toCamelCase(routeBase)}Router.get("/", requireAuth, async (req: Request, res: Response) => {`);
+  lines.push(`${toCamelCase(routeBase)}Router.get("/", ${__crudMiddlewares}, async (req: Request, res: Response) => {`);
   lines.push(`  try {`);
   lines.push(`    const page = parseInt(req.query.page as string) || 1;`);
   lines.push(`    const pageSize = Math.min(parseInt(req.query.page_size as string) || 50, 100);`);
@@ -314,7 +331,7 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
 
   // UPDATE — with state machine enforcement
   lines.push(`// UPDATE`);
-  lines.push(`${toCamelCase(routeBase)}Router.put("/:id", requireAuth, async (req: Request, res: Response) => {`);
+  lines.push(`${toCamelCase(routeBase)}Router.put("/:id", ${__crudMiddlewares}, async (req: Request, res: Response) => {`);
   lines.push(`  const fields = { ...req.body };`);
   if (mod.state_machines.length > 0) {
     const sm = mod.state_machines[0];
@@ -339,7 +356,7 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
 
   // DELETE
   lines.push(`// DELETE`);
-  lines.push(`${toCamelCase(routeBase)}Router.delete("/:id", requireAuth, async (req: Request, res: Response) => {`);
+  lines.push(`${toCamelCase(routeBase)}Router.delete("/:id", ${__crudMiddlewares}, async (req: Request, res: Response) => {`);
   lines.push(`  try {`);
   lines.push(`    const count = await execute(\`DELETE FROM ${tableName} WHERE id = $1\`, [req.params.id]);`);
   lines.push(`    if (count === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });`);
@@ -400,7 +417,15 @@ function emitCapabilityEndpoint(method: IR.IRMethod, mod: IR.IRModule, tableName
   const isTransactional = method.sync === "transactional";
 
   lines.push(`// CAPABILITY: ${method.name}${isTransactional ? " [transactional]" : ""}${method.retry ? ` [retry: ${method.retry.max_attempts}x ${method.retry.backoff}]` : ""}`);
-  lines.push(`${routerName}.post("${endpoint}", requireAuth, async (req: Request, res: Response) => {`);
+  // Build middleware chain: optional rate limiter + requireAuth + optional audit
+  const capMiddlewares: string[] = ["requireAuth"];
+  if (typeof mod.config["rate_limit"] === "number" && (mod.config["rate_limit"] as number) > 0) {
+    capMiddlewares.unshift("__routeRateLimit");
+  }
+  if (mod.config["audit"]) {
+    capMiddlewares.push(`auditLog("${method.name}", "${mod.models[0]?.name ?? ""}")`);
+  }
+  lines.push(`${routerName}.post("${endpoint}", ${capMiddlewares.join(", ")}, async (req: Request, res: Response) => {`);
   lines.push(`  const auth: AuthContext = (req as any).auth;`);
 
   // Wrap in retry logic if declared

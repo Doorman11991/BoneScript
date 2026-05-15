@@ -27,7 +27,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.compile = exports.emitAuditMiddleware = exports.emitAuditSchema = exports.emitSeedFile = exports.emitPostmanCollection = exports.emitZodSchemas = exports.emitSdkPackageJson = exports.emitTypescriptSdk = exports.emitOpenApiJson = exports.emitOpenApiSpec = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.NakamaEmitter = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
+exports.compile = exports.emitAdminPanel = exports.emitAuditMiddleware = exports.emitAuditSchema = exports.emitSeedFile = exports.emitPostmanCollection = exports.emitZodSchemas = exports.emitSdkPackageJson = exports.emitTypescriptSdk = exports.emitOpenApiJson = exports.emitOpenApiSpec = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.NakamaEmitter = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
 // Core pipeline
 var lexer_1 = require("./lexer");
 Object.defineProperty(exports, "Lexer", { enumerable: true, get: function () { return lexer_1.Lexer; } });
@@ -88,6 +88,8 @@ Object.defineProperty(exports, "emitSeedFile", { enumerable: true, get: function
 var emit_audit_1 = require("./emit_audit");
 Object.defineProperty(exports, "emitAuditSchema", { enumerable: true, get: function () { return emit_audit_1.emitAuditSchema; } });
 Object.defineProperty(exports, "emitAuditMiddleware", { enumerable: true, get: function () { return emit_audit_1.emitAuditMiddleware; } });
+var emit_admin_1 = require("./emit_admin");
+Object.defineProperty(exports, "emitAdminPanel", { enumerable: true, get: function () { return emit_admin_1.emitAdminPanel; } });
 /**
  * Convenience function: compile a .bone source string to files.
  */

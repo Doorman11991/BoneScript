@@ -22,6 +22,7 @@ const emit_zod_1 = require("./emit_zod");
 const emit_postman_1 = require("./emit_postman");
 const emit_seed_1 = require("./emit_seed");
 const emit_audit_1 = require("./emit_audit");
+const emit_admin_1 = require("./emit_admin");
 function toSnakeCase(s) {
     return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
@@ -167,6 +168,8 @@ class FullEmitter {
         // 17. Audit log
         files.push({ path: "migrations/audit_log.sql", content: (0, emit_audit_1.emitAuditSchema)(), language: "sql", source_module: "infra" });
         files.push({ path: "src/audit.ts", content: (0, emit_audit_1.emitAuditMiddleware)(system), language: "typescript", source_module: "infra" });
+        // 18. Admin panel
+        files.push({ path: "admin/index.html", content: (0, emit_admin_1.emitAdminPanel)(system), language: "yaml", source_module: "admin" });
         // 10. Source map + debug handler
         files.push({ path: `${system.name}.bone.map`, content: (0, emit_sourcemap_1.emitSourceMapFile)(system, `${system.name}.bone`), language: "json", source_module: "root" });
         files.push({ path: "src/debug.ts", content: (0, emit_sourcemap_1.emitDebugHandler)(system), language: "typescript", source_module: "infra" });
