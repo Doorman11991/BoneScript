@@ -50,14 +50,17 @@ export function optimize(system: IR.IRSystem): OptimizationResult {
 function deadModuleElimination(s: IR.IRSystem, log: OptimizationLog[]): IR.IRSystem {
   const reachable = new Set<string>();
 
-  // Seed: always-reachable kinds
+  // Seed: entry-point kinds that are always reachable by definition.
+  // worker_service, event_bus, and cache are infrastructure modules that are
+  // only reachable if something depends on them — they are NOT seeded here so
+  // that truly orphaned infrastructure modules can be eliminated.
   for (const m of s.modules) {
-    if (["gateway", "frontend", "auth_service", "api_service", "realtime_service", "data_store", "event_bus", "cache"].includes(m.kind)) {
+    if (["gateway", "frontend", "auth_service", "api_service", "realtime_service", "data_store"].includes(m.kind)) {
       reachable.add(m.id);
     }
   }
 
-  // Propagate reachability
+  // Propagate reachability through the dependency graph
   let changed = true;
   while (changed) {
     changed = false;

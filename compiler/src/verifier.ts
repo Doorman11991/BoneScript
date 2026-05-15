@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BoneScript Verifier â€” Stage 7 of the compilation pipeline.
  * Implements spec/07_IR_SPEC.md Â§5 (IR Validation Rules).
  *
@@ -197,7 +197,7 @@ export class Verifier {
     const visited = new Set<string>();
     const inStack = new Set<string>();
 
-    const dfs = (node: string, path: string[]): boolean => {
+    const dfs = (node: string, path: string[]): void => {
       if (inStack.has(node)) {
         const cycle = [...path.slice(path.indexOf(node)), node];
         const names = cycle.map(id => system.modules.find(m => m.id === id)?.name || id);
@@ -207,9 +207,9 @@ export class Verifier {
           message: `Circular dependency: ${names.join(" â†’ ")}`,
           location: node,
         });
-        return true;
+        return;
       }
-      if (visited.has(node)) return false;
+      if (visited.has(node)) return;
 
       visited.add(node);
       inStack.add(node);
@@ -221,7 +221,6 @@ export class Verifier {
       }
 
       inStack.delete(node);
-      return false;
     };
 
     for (const [id] of graph) {

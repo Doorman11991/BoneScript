@@ -11,6 +11,7 @@
  */
 
 import * as IR from "./ir";
+import { toTsType } from "./emit_router";
 
 // ─── Outbox SQL Schema ────────────────────────────────────────────────────────
 
@@ -310,22 +311,6 @@ export const eventBus = {
 // Generates per-event emitXxx() typed publisher functions as specified in
 // spec/09_CODEGEN.md §5.4. These wrap eventBus.publish with a typed payload
 // interface so callers get compile-time safety instead of raw Record<string,unknown>.
-
-const TS_TYPE_MAP: Record<string, string> = {
-  string: "string", uint: "number", int: "number", float: "number",
-  bool: "boolean", timestamp: "Date", uuid: "string", bytes: "Buffer", json: "unknown",
-};
-
-function toTsType(irType: string): string {
-  if (TS_TYPE_MAP[irType]) return TS_TYPE_MAP[irType];
-  const listMatch = irType.match(/^list<(.+)>$/);
-  if (listMatch) return `${toTsType(listMatch[1])}[]`;
-  const setMatch = irType.match(/^set<(.+)>$/);
-  if (setMatch) return `${toTsType(setMatch[1])}[]`;
-  const optMatch = irType.match(/^optional<(.+)>$/);
-  if (optMatch) return `${toTsType(optMatch[1])} | null`;
-  return irType;
-}
 
 export function emitTypedEventPublishers(system: IR.IRSystem): string {
   if (system.events.length === 0) return "";

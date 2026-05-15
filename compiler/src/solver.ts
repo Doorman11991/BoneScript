@@ -59,7 +59,7 @@ const DOMAIN_DEFAULTS: Record<string, DomainDefaults> = {
   },
   iot_system: {
     auth: "apikey",
-    engine: "dynamodb",
+    engine: "postgresql", // dynamodb is not yet supported by the emitter (T014); use postgresql
     session_engine: "redis",
     sync: "eventual",
     channel_transport: "grpc_stream",

@@ -19,6 +19,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as AST from "./ast";
+import { toTsType } from "./emit_router";
 
 // ─── Sentinel Helpers ────────────────────────────────────────────────────────
 
@@ -35,19 +36,6 @@ export function isStubImplementation(code: string): boolean {
 }
 
 // ─── Stub Generator ──────────────────────────────────────────────────────────
-
-function toTsType(irType: string): string {
-  const map: Record<string, string> = {
-    string: "string", uint: "number", int: "number", float: "number",
-    bool: "boolean", timestamp: "Date", uuid: "string", bytes: "Buffer", json: "unknown",
-  };
-  if (map[irType]) return map[irType];
-  const m = irType.match(/^(list|set)<(.+)>$/);
-  if (m) return `${toTsType(m[2])}[]`;
-  const om = irType.match(/^optional<(.+)>$/);
-  if (om) return `${toTsType(om[1])} | null`;
-  return irType;
-}
 
 function serializeType(t: AST.TypeExprNode): string {
   switch (t.kind) {

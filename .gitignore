@@ -76,8 +76,15 @@ coverage/
 # ─── Temp fix scripts ────────────────────────────────────────────────────────
 fix_*.py
 
+# ─── SmartAgenticLLMHarness (local dev, not tracked) ─────────────────────────
+SmartAgenticLLMHarness/
+examples/SmartAgenticLLMHarness.bone
+
 # ─── Spec directory (aspirational, not authoritative) ────────────────────────
 spec/
+
+# ─── Kiro IDE workspace config ───────────────────────────────────────────────
+.kiro/
 
 # ─── vscode-ext compiled output ──────────────────────────────────────────────
 vscode-ext/out/

@@ -7,6 +7,7 @@
  */
 
 import * as IR from "./ir";
+import { toSnakeCase } from "./lowering_helpers";
 
 // ─── Type mapping ─────────────────────────────────────────────────────────────
 
@@ -51,10 +52,6 @@ function modelToSchema(model: IR.IRModel): Record<string, unknown> {
     properties,
     ...(required.length > 0 ? { required } : {}),
   };
-}
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
 // ─── Main emitter ─────────────────────────────────────────────────────────────

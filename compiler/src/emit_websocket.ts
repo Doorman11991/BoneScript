@@ -4,10 +4,7 @@
  */
 
 import * as IR from "./ir";
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
+import { toSnakeCase } from "./lowering_helpers";
 
 function toCamelCase(s: string): string {
   return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());

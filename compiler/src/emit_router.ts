@@ -6,6 +6,7 @@
 
 import * as IR from "./ir";
 import { emitCapabilityBody } from "./emit_capability";
+import { emitPipelineBody, emitAlgorithmBody } from "./emit_composition";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -361,10 +362,8 @@ export function emitCapabilityEndpoint(
   }
 
   if (method.pipeline) {
-    const { emitPipelineBody } = require("./emit_composition");
     lines.push(emitPipelineBody(method, "    "));
   } else if (method.algorithm) {
-    const { emitAlgorithmBody } = require("./emit_composition");
     lines.push(emitAlgorithmBody(method, "    "));
   } else {
     lines.push(emitCapabilityBody(method, mod, system, "    "));

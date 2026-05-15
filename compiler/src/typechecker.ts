@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BoneScript Type Checker â€” Stage 3 of the compilation pipeline.
  * Implements spec/04_TYPE_SYSTEM.md.
  *
@@ -180,6 +180,7 @@ export class TypeChecker {
       case "ExtensionPointDecl": this.checkExtensionPoint(decl); break;
       case "StoreDecl": this.checkStore(decl); break;
       case "PolicyDecl": this.checkPolicy(decl); break;
+      case "EventDecl": this.checkEvent(decl); break;
     }
   }
 
@@ -524,8 +525,22 @@ export class TypeChecker {
     if (condType && !this.isBoolish(condType)) {
       this.addError("T005", "Ternary condition must be bool", expr.loc);
     }
-    // result type is type of consequent (assume both branches same type)
-    return this.inferExprType(expr.consequent, ctx);
+    // Both branches must have compatible types
+    const consequentType = this.inferExprType(expr.consequent, ctx);
+    const alternateType  = this.inferExprType(expr.alternate, ctx);
+    if (
+      consequentType && alternateType &&
+      !typeEquals(consequentType, alternateType) &&
+      !this.isAssignable(consequentType, alternateType) &&
+      !this.isAssignable(alternateType, consequentType)
+    ) {
+      this.addError(
+        "T017",
+        `Ternary branches have incompatible types: consequent is ${typeToString(consequentType)}, alternate is ${typeToString(alternateType)}`,
+        expr.loc,
+      );
+    }
+    return consequentType;
   }
 
   // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -635,10 +650,38 @@ export class TypeChecker {
     }
   }
 
+  // ─── Event Checking ───────────────────────────────────────────────────────────
 
-}
+  private static readonly VALID_DELIVERY_MODES = new Set(["at_least_once", "at_most_once", "exactly_once"]);
+
+  private checkEvent(decl: AST.EventDeclNode): void {
+    // Check payload field types resolve and have no duplicates
+    const seen = new Set<string>();
+    for (const field of decl.payload) {
+      if (seen.has(field.name)) {
+        this.addError("T009", `Duplicate field name '${field.name}' in event '${decl.name}'`, field.loc);
+      }
+      seen.add(field.name);
+
+      const resolved = this.resolveTypeExpr(field.type);
+      if (!resolved) {
+        this.addError("T001", `Event '${decl.name}' payload field '${field.name}' references undefined type`, field.loc);
+      }
+    }
+
+    // Check delivery mode is valid
+    if (decl.delivery && !TypeChecker.VALID_DELIVERY_MODES.has(decl.delivery)) {
+      this.addError(
+        "T016",
+        `Event '${decl.name}' has invalid delivery mode '${decl.delivery}'. ` +
+        `Valid values: ${[...TypeChecker.VALID_DELIVERY_MODES].join(", ")}.`,
+        decl.loc,
+      );
+    }
+  }
 // â”€â”€â”€ Type Context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+}
 class TypeContext {
   private locals: Map<string, CVType>;
   private symbols: SymbolTable;

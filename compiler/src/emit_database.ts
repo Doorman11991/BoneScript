@@ -4,10 +4,7 @@
  */
 
 import * as IR from "./ir";
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
+import { toSnakeCase } from "./lowering_helpers";
 
 export function emitDbClient(system: IR.IRSystem): string {
   const name = toSnakeCase(system.name);

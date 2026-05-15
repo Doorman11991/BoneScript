@@ -1,0 +1,628 @@
+// BoneScript: SmartAgenticLLMHarness — Operations Layer
+// Capabilities, algorithms, flows, channels, and extension points.
+// Standalone compilation unit — entities are declared as minimal stubs
+// so this file compiles independently. The core data model is in
+// SmartAgenticLLMHarness_core.bone.
+
+system SmartAgenticLLMHarnessOps {
+  domain: agentic_engineering
+
+  // ─── Minimal entity stubs (for type resolution only) ──────────────────────
+
+  entity ReasoningNode {
+    owns: [
+      provider: string,
+      model_id: string,
+      role: string,
+      capability_tier: uint,
+      failure_count: uint,
+      success_count: uint,
+      avg_latency_ms: float,
+      is_available: bool
+    ]
+    constraints: [
+      role in ["planner", "implementer", "diagnoser", "repairer", "auditor"],
+      capability_tier >= 1,
+      capability_tier <= 5
+    ]
+    states: idle -> assigned -> executing -> idle | degraded | evicted
+    auth: jwt
+    index: [role, is_available]
+  }
+
+  entity EngineeringRequest {
+    owns: [
+      user_id: uuid,
+      intent: string,
+      request_type: string,
+      priority: uint,
+      iteration_count: uint,
+      max_iterations: uint,
+      status: string
+    ]
+    constraints: [
+      priority >= 1,
+      priority <= 10,
+      iteration_count >= 0,
+      max_iterations >= 1
+    ]
+    states: pending -> planning -> implementing -> testing -> diagnosing -> repairing -> auditing -> success | failure | aborted
+    index: [user_id, status]
+  }
+
+  entity TaskGraph {
+    owns: [
+      request_id: uuid,
+      tasks: json,
+      dependency_map: json,
+      execution_order: json,
+      iteration: uint,
+      is_valid: bool,
+      task_count: uint
+    ]
+    constraints: [
+      iteration >= 0,
+      task_count >= 1
+    ]
+    states: draft -> validated -> executing -> complete | invalidated
+    index: [request_id, iteration]
+    relation request: belongs_to EngineeringRequest
+  }
+
+  entity CodePatch {
+    owns: [
+      request_id: uuid,
+      task_graph_id: uuid,
+      diff: json,
+      iteration: uint,
+      apply_status: string,
+      is_partial: bool,
+      patch_type: string
+    ]
+    constraints: [
+      iteration >= 0,
+      apply_status in ["pending", "applied", "failed", "rolled_back"]
+    ]
+    states: pending -> applied -> rolled_back | failed
+    index: [request_id, iteration, apply_status]
+    relation task_graph: belongs_to TaskGraph
+  }
+
+  entity TestResult {
+    owns: [
+      request_id: uuid,
+      patch_id: uuid,
+      iteration: uint,
+      passed: bool,
+      failing_tests: list<string>,
+      runtime_logs: string,
+      error_traces: string,
+      duration_ms: uint
+    ]
+    constraints: [
+      iteration >= 0,
+      duration_ms >= 0
+    ]
+    states: pending -> complete
+    index: [request_id, iteration, passed]
+    relation patch: belongs_to CodePatch
+  }
+
+  entity FailureDiagnosis {
+    owns: [
+      request_id: uuid,
+      test_result_id: uuid,
+      iteration: uint,
+      failure_class: string,
+      root_cause: string,
+      affected_components: list<string>,
+      fix_strategy: string,
+      replan_required: bool
+    ]
+    constraints: [
+      failure_class in ["compilation_failure", "runtime_exception", "logic_failure", "specification_mismatch", "dependency_failure"],
+      root_cause.length in 1..4096
+    ]
+    states: draft -> confirmed
+    index: [request_id, iteration, failure_class]
+    relation test_result: belongs_to TestResult
+  }
+
+  entity ExecutionTrace {
+    owns: [
+      request_id: uuid,
+      task_graph_history: json,
+      patch_history: json,
+      test_history: json,
+      failure_chain: json,
+      repair_chain: json,
+      node_assignment_history: json,
+      final_code_state: json,
+      terminated_with: string,
+      total_iterations: uint,
+      total_duration_ms: uint
+    ]
+    constraints: [
+      terminated_with in ["SUCCESS", "FAILURE", "ABORT", "IN_PROGRESS"],
+      total_iterations >= 0
+    ]
+    states: recording -> finalized
+    index: [request_id, terminated_with]
+    relation request: belongs_to EngineeringRequest
+  }
+
+  entity NodePool {
+    owns: [
+      role: string,
+      min_tier: uint,
+      max_pool_size: uint,
+      current_size: uint
+    ]
+    constraints: [
+      role in ["planner", "implementer", "diagnoser", "repairer", "auditor"],
+      min_tier >= 1,
+      max_pool_size >= 1,
+      current_size >= 0,
+      current_size <= max_pool_size
+    ]
+    states: healthy -> degraded | exhausted
+    index: [role, min_tier]
+    relation nodes: has_many ReasoningNode
+  }
+
+  // ─── Events (stubs for emit resolution) ───────────────────────────────────
+
+  event PlanGenerated {
+    payload: { request_id: uuid, task_graph_id: uuid, iteration: uint, generated_at: timestamp }
+    delivery: at_least_once
+    ttl: 7d
+  }
+
+  event PatchApplied {
+    payload: { request_id: uuid, patch_id: uuid, patch_type: string, iteration: uint, applied_at: timestamp }
+    delivery: exactly_once
+    ttl: 30d
+  }
+
+  event PatchRolledBack {
+    payload: { request_id: uuid, patch_id: uuid, iteration: uint, reason: string, rolled_back_at: timestamp }
+    delivery: exactly_once
+    ttl: 30d
+  }
+
+  event TestsExecuted {
+    payload: { request_id: uuid, test_result_id: uuid, iteration: uint, passed: bool, duration_ms: uint, executed_at: timestamp }
+    delivery: at_least_once
+    ttl: 7d
+  }
+
+  event FailureClassified {
+    payload: { request_id: uuid, diagnosis_id: uuid, failure_class: string, replan_required: bool, iteration: uint, classified_at: timestamp }
+    delivery: at_least_once
+    ttl: 7d
+  }
+
+  event NodeRerouted {
+    payload: { request_id: uuid, old_node_id: uuid, new_node_id: uuid, role: string, reason: string, rerouted_at: timestamp }
+    delivery: at_least_once
+    ttl: 7d
+  }
+
+  event RunTerminated {
+    payload: { request_id: uuid, outcome: string, total_iterations: uint, total_duration_ms: uint, terminated_at: timestamp }
+    delivery: exactly_once
+    ttl: 90d
+  }
+
+  // ─── Capabilities ──────────────────────────────────────────────────────────
+
+  // PLAN PHASE — convert user intent into a validated, acyclic task graph.
+  capability generate_plan(request: EngineeringRequest, node: ReasoningNode) {
+    requires: [
+      request.status == "planning",
+      node.role == "planner",
+      node.is_available == true,
+      node.state == "idle"
+    ]
+    effects: [
+      request.iteration_count += 1,
+      node.state = "executing"
+    ]
+    emits: PlanGenerated
+    sync: transactional
+    timeout: 60s
+    retry: { max_attempts: 2, backoff: exponential, interval: 5s }
+    idempotent: false
+  }
+
+  // Validate task graph dependency ordering using topological sort.
+  capability validate_task_graph(graph: TaskGraph) {
+    algorithm: topological_sort using {
+      graph: graph.dependency_map
+    }
+    returns: json
+    sync: transactional
+    timeout: 10s
+    idempotent: true
+  }
+
+  // IMPLEMENTATION PHASE — generate a minimal structured diff.
+  capability generate_patch(graph: TaskGraph, node: ReasoningNode) {
+    requires: [
+      graph.state == "validated",
+      graph.is_valid == true,
+      node.role == "implementer",
+      node.is_available == true
+    ]
+    pipeline: {
+      verify_graph_acyclic(graph)
+      emit_code_diff(graph, node) as patch
+      validate_patch_structure(patch)
+      on_error: rollback
+    }
+    sync: transactional
+    timeout: 120s
+    retry: { max_attempts: 2, backoff: linear, interval: 10s }
+    idempotent: false
+  }
+
+  // APPLY PHASE — deterministically apply patch; all-or-nothing.
+  capability apply_patch(patch: CodePatch) {
+    requires: [
+      patch.apply_status == "pending",
+      patch.is_partial == false
+    ]
+    effects: [
+      patch.apply_status = "applied"
+    ]
+    emits: PatchApplied
+    sync: transactional
+    timeout: 30s
+    idempotent: false
+  }
+
+  // Rollback a patch — restores codebase snapshot to pre-apply state.
+  capability rollback_patch(patch: CodePatch) {
+    requires: [
+      patch.apply_status in ["applied", "failed"]
+    ]
+    effects: [
+      patch.apply_status = "rolled_back"
+    ]
+    emits: PatchRolledBack
+    sync: transactional
+    timeout: 30s
+    idempotent: true
+  }
+
+  // TEST PHASE — run deterministic test suite.
+  capability run_tests(patch: CodePatch, request: EngineeringRequest) {
+    requires: [
+      patch.apply_status == "applied",
+      request.status == "testing"
+    ]
+    effects: []
+    emits: TestsExecuted
+    sync: transactional
+    timeout: 300s
+    idempotent: true
+  }
+
+  // DIAGNOSIS PHASE — classify failure strictly from observed test output.
+  capability classify_failure(result: TestResult, node: ReasoningNode) {
+    requires: [
+      result.passed == false,
+      node.role == "diagnoser",
+      node.is_available == true
+    ]
+    effects: [
+      node.state = "executing"
+    ]
+    emits: FailureClassified
+    sync: transactional
+    timeout: 60s
+    retry: { max_attempts: 2, backoff: exponential, interval: 5s }
+    idempotent: false
+  }
+
+  // REPAIR PHASE — generate a corrective patch targeting root cause only.
+  capability generate_repair(diagnosis: FailureDiagnosis, node: ReasoningNode) {
+    requires: [
+      diagnosis.state == "confirmed",
+      diagnosis.replan_required == false,
+      node.role == "repairer",
+      node.is_available == true
+    ]
+    effects: [
+      node.state = "executing"
+    ]
+    sync: transactional
+    timeout: 120s
+    retry: { max_attempts: 2, backoff: linear, interval: 10s }
+    idempotent: false
+  }
+
+  // AUDIT PHASE — validate patch in parallel: safety + spec + side-effects.
+  capability audit_patch(patch: CodePatch, node: ReasoningNode) {
+    requires: [
+      patch.apply_status == "applied",
+      node.role == "auditor",
+      node.is_available == true
+    ]
+    parallel: {
+      check_safety_compliance(patch)
+      check_spec_alignment(patch)
+      check_no_side_effects(patch)
+    }
+    sync: transactional
+    timeout: 60s
+    idempotent: true
+  }
+
+  // LOOP CONTROL — advance iteration counter.
+  capability advance_iteration(request: EngineeringRequest) {
+    requires: [
+      request.iteration_count < request.max_iterations,
+      request.status in ["diagnosing", "repairing"]
+    ]
+    effects: [
+      request.iteration_count += 1
+    ]
+    sync: transactional
+    timeout: 5s
+    idempotent: false
+  }
+
+  // NODE SELECTION — rank available nodes by health score.
+  capability select_best_node(pool: NodePool, role: string) {
+    requires: [
+      pool.role == role,
+      pool.current_size >= 1,
+      pool.state == "healthy"
+    ]
+    algorithm: rank_by using {
+      items: pool.nodes,
+      score_fn: node_health_score,
+      order: "desc"
+    }
+    returns: list<ReasoningNode>
+    sync: eventual
+    timeout: 5s
+    idempotent: true
+  }
+
+  // NODE ASSIGNMENT — bipartite matching of requests to available nodes.
+  capability assign_nodes_to_requests(
+    requests: list<EngineeringRequest>,
+    nodes: list<ReasoningNode>
+  ) {
+    algorithm: bipartite_matching using {
+      left: requests,
+      right: nodes,
+      edges: role_feasibility_graph
+    }
+    returns: json
+    sync: transactional
+    timeout: 15s
+    idempotent: false
+  }
+
+  // REQUEST ROUTING — consistent hash to stable node pool shard.
+  capability route_request(request: EngineeringRequest, pools: list<NodePool>) {
+    algorithm: consistent_hash using {
+      key: request.id,
+      nodes: pools,
+      replica_count: 150
+    }
+    returns: string
+    sync: eventual
+    timeout: 5s
+    idempotent: true
+  }
+
+  // HEALTH SCORING — weighted average of node performance metrics.
+  capability score_node_health(nodes: list<ReasoningNode>) {
+    algorithm: weighted_average using {
+      items: nodes,
+      score_fn: composite_health_metric
+    }
+    returns: float
+    sync: eventual
+    timeout: 5s
+    idempotent: true
+  }
+
+  // TRACE LOOKUP — binary search over sorted trace history.
+  capability find_trace_at_iteration(
+    trace: ExecutionTrace,
+    target_iteration: uint
+  ) {
+    algorithm: binary_search using {
+      items: trace.patch_history,
+      target: target_iteration
+    }
+    returns: json
+    sync: eventual
+    timeout: 5s
+    idempotent: true
+  }
+
+  // REROUTE — swap a degraded node for a healthy replacement.
+  capability reroute_node(
+    request: EngineeringRequest,
+    failed_node: ReasoningNode,
+    replacement: ReasoningNode
+  ) {
+    requires: [
+      failed_node.state == "degraded",
+      replacement.is_available == true,
+      replacement.role == failed_node.role
+    ]
+    effects: [
+      failed_node.is_available = false,
+      replacement.state = "assigned"
+    ]
+    emits: NodeRerouted
+    sync: transactional
+    timeout: 10s
+    idempotent: false
+  }
+
+  // TERMINATE — seal the run with a final outcome.
+  capability terminate_run(
+    request: EngineeringRequest,
+    trace: ExecutionTrace,
+    outcome: string
+  ) {
+    requires: [
+      outcome in ["SUCCESS", "FAILURE", "ABORT"],
+      trace.state == "recording"
+    ]
+    effects: [
+      trace.terminated_with = outcome
+    ]
+    emits: RunTerminated
+    sync: transactional
+    timeout: 10s
+    idempotent: true
+  }
+
+  // ─── Extension Points ──────────────────────────────────────────────────────
+
+  extension_point llm_plan_adapter(
+    intent: string,
+    request_type: string,
+    context: json
+  ) {
+    returns: json
+    stable: true
+  }
+
+  extension_point llm_implement_adapter(
+    task_graph: json,
+    codebase_snapshot: json
+  ) {
+    returns: json
+    stable: true
+  }
+
+  extension_point llm_diagnose_adapter(
+    test_result: json,
+    codebase_snapshot: json
+  ) {
+    returns: json
+    stable: true
+  }
+
+  extension_point llm_repair_adapter(
+    diagnosis: json,
+    codebase_snapshot: json
+  ) {
+    returns: json
+    stable: true
+  }
+
+  extension_point llm_audit_adapter(
+    patch: json,
+    spec: json
+  ) {
+    returns: json
+    stable: true
+  }
+
+  // ─── Flows ─────────────────────────────────────────────────────────────────
+
+  flow engineering_loop {
+    step plan: generate_plan(request, planner_node)
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step validate_graph: validate_task_graph(task_graph)
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step implement: generate_patch(task_graph, implementer_node)
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step apply: apply_patch(patch)
+      compensate: rollback_patch(patch)
+
+    step test: run_tests(patch, request)
+      compensate: rollback_patch(patch)
+
+    step audit: audit_patch(patch, auditor_node)
+      compensate: rollback_patch(patch)
+  }
+
+  flow repair_loop {
+    step diagnose: classify_failure(test_result, diagnoser_node)
+      compensate: terminate_run(request, trace, "FAILURE")
+
+    step repair: generate_repair(diagnosis, repairer_node)
+      compensate: terminate_run(request, trace, "FAILURE")
+
+    step apply_fix: apply_patch(repair_patch)
+      compensate: rollback_patch(repair_patch)
+
+    step retest: run_tests(repair_patch, request)
+      compensate: rollback_patch(repair_patch)
+
+    step audit_fix: audit_patch(repair_patch, auditor_node)
+      compensate: rollback_patch(repair_patch)
+  }
+
+  flow node_bootstrap {
+    step route: route_request(request, all_pools)
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step rank_planners: select_best_node(planner_pool, "planner")
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step rank_implementers: select_best_node(implementer_pool, "implementer")
+      compensate: terminate_run(request, trace, "ABORT")
+
+    step assign: assign_nodes_to_requests(pending_requests, available_nodes)
+      compensate: terminate_run(request, trace, "ABORT")
+  }
+
+  // ─── Channels ──────────────────────────────────────────────────────────────
+
+  channel execution_stream {
+    transport: websocket
+    ordering: fifo
+    participants: set<ReasoningNode>
+    persistence: last_500
+    max_size: 10000
+  }
+
+  channel diagnostic_bus {
+    transport: websocket
+    ordering: causal
+    participants: set<ReasoningNode>
+    persistence: last_200
+    filter: participant.role in ["diagnoser", "repairer", "auditor"]
+  }
+
+  channel audit_channel {
+    transport: websocket
+    ordering: fifo
+    participants: set<ReasoningNode>
+    persistence: last_100
+    filter: participant.role == "auditor"
+  }
+
+  // ─── Policies ──────────────────────────────────────────────────────────────
+
+  policy harness_ops {
+    rate_limit: 100 per 1m
+    access: [admin, orchestrator]
+    audit: true
+    encryption: both
+  }
+
+  // ─── Constraints ───────────────────────────────────────────────────────────
+
+  constraint ops_iteration_ceiling:
+    EngineeringRequest.iteration_count <= EngineeringRequest.max_iterations
+
+  constraint ops_pool_capacity:
+    NodePool.current_size <= NodePool.max_pool_size
+}

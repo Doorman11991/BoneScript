@@ -34,10 +34,7 @@ import { emitTestSuite } from "./emit_tests";
 import { emitDockerfile, emitDockerignore, emitK8sDeployment, emitGithubActions } from "./emit_deploy";
 import { emitModelFile, emitModelsIndex } from "./emit_models";
 import { emitOpenApiSchema } from "./emit_openapi";
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
+import { toSnakeCase } from "./lowering_helpers";
 
 /** Resolve the auth method for the system from the resolution map or module configs. */
 function resolveSystemAuthMethod(system: IR.IRSystem): "jwt" | "oauth2" | "apikey" {

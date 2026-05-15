@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BoneScript Code Emitter â€” Stage 6 of the compilation pipeline.
  * Implements spec/09_CODEGEN.md.
  *
@@ -7,6 +7,10 @@
  */
 
 import * as IR from "./ir";
+import { emitCapabilityBody } from "./emit_capability";
+import { emitPipelineBody, emitAlgorithmBody } from "./emit_composition";
+import { toSnakeCase } from "./lowering_helpers";
+import { toTsType } from "./emit_router";
 
 export interface EmittedFile {
   path: string;
@@ -41,19 +45,6 @@ const SQL_TYPE_MAP: Record<string, string> = {
   json: "JSONB",
 };
 
-function toTsType(irType: string): string {
-  if (TS_TYPE_MAP[irType]) return TS_TYPE_MAP[irType];
-  const listMatch = irType.match(/^list<(.+)>$/);
-  if (listMatch) return `${toTsType(listMatch[1])}[]`;
-  const setMatch = irType.match(/^set<(.+)>$/);
-  if (setMatch) return `Set<${toTsType(setMatch[1])}>`;
-  const mapMatch = irType.match(/^map<(.+),\s*(.+)>$/);
-  if (mapMatch) return `Map<${toTsType(mapMatch[1])}, ${toTsType(mapMatch[2])}>`;
-  const optMatch = irType.match(/^optional<(.+)>$/);
-  if (optMatch) return `${toTsType(optMatch[1])} | null`;
-  // Entity reference or unknown
-  return irType;
-}
 
 function toSqlType(irType: string): string {
   if (SQL_TYPE_MAP[irType]) return SQL_TYPE_MAP[irType];
@@ -68,9 +59,6 @@ function sqlCheckConstraint(irType: string): string {
   return "";
 }
 
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
 
 // â”€â”€â”€ Emitter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -167,12 +155,6 @@ export class Emitter {
     // Add cardinality CHECK constraints from relations
     // has_one: enforce at most 1 child row via a partial unique index (emitted below)
     // has_many with explicit max: enforce via CHECK on count (done via trigger — see below)
-    for (const rel of (mod as any).relations_with_cardinality || []) {
-      if (rel.cardinality && rel.cardinality.max !== "*" && typeof rel.cardinality.max === "number") {
-        // Will be enforced via trigger — placeholder comment
-        fieldLines.push(`  -- cardinality: ${rel.name} max ${rel.cardinality.max} (enforced by trigger)`);
-      }
-    }
 
     lines.push(fieldLines.join(",\n"));
     lines.push(`);`);
@@ -462,8 +444,6 @@ export class Emitter {
 
     // Real implementation — delegate to emitCapabilityBody for capabilities,
     // or generate CRUD SQL for standard methods
-    const { emitCapabilityBody } = require("./emit_capability");
-    const { emitPipelineBody, emitAlgorithmBody } = require("./emit_composition");
 
     if (method.pipeline) {
       lines.push(emitPipelineBody(method, "    "));
@@ -473,10 +453,14 @@ export class Emitter {
       // Capability with effects/preconditions — use the full capability body emitter
       try {
         lines.push(emitCapabilityBody(method, mod, system, "    "));
-      } catch {
-        // Fallback: emit a descriptive stub if body generation fails
+      } catch (err: unknown) {
+        // Body generation failed — emit a visible compile-time warning in the generated
+        // file so the developer knows this method needs attention, rather than silently
+        // producing a broken stub.
+        const msg = err instanceof Error ? err.message : String(err);
+        lines.push(`    // ⚠ COMPILER WARNING: emitCapabilityBody failed for '${method.name}': ${msg.replace(/`/g, "'")}`);
         lines.push(`    // Effects: ${method.effects.map((e: any) => e.target + " " + e.op + " " + e.value).join("; ")}`);
-        lines.push(`    return { ok: false, error: { code: "NOT_IMPLEMENTED", message: "${method.name} not yet implemented" } };`);
+        lines.push(`    return { ok: false, error: { code: "CODEGEN_FAILED", message: "Body generation failed for '${method.name}': " + ${JSON.stringify(msg)} } };`);
       }
     } else {
       // CRUD or simple method — emit a typed not-implemented stub

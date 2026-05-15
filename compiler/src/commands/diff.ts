@@ -9,16 +9,13 @@ import { createHash } from "crypto";
 import { Lexer } from "../lexer";
 import { Parser } from "../parser";
 import { Lowering } from "../lowering";
+import { toSnakeCase } from "../lowering_helpers";
 import type * as IR from "../ir";
 
 const SQL_TYPE_MAP: Record<string, string> = {
   string: "VARCHAR", uint: "BIGINT", int: "BIGINT", float: "DOUBLE PRECISION",
   bool: "BOOLEAN", timestamp: "TIMESTAMPTZ", uuid: "UUID", bytes: "BYTEA", json: "JSONB",
 };
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
 
 async function compileToIR(filePath: string): Promise<IR.IRSystem[]> {
   const resolved = path.resolve(filePath);

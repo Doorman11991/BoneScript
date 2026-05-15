@@ -18,8 +18,8 @@
  */
 
 import * as IR from "./ir";
+import { toSnakeCase } from "./lowering_helpers";
 
-// ─── Expression Parser ────────────────────────────────────────────────────────
 
 type ExprKind =
   | { kind: "literal"; value: string; raw: string }
@@ -86,10 +86,6 @@ interface EntityFetch {
   entityType: string;
   tableName: string;
   idField: string;
-}
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
 function getEntityFetches(method: IR.IRMethod, mod: IR.IRModule, system: IR.IRSystem): EntityFetch[] {

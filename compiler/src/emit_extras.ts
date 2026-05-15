@@ -8,10 +8,7 @@
 
 import * as IR from "./ir";
 import * as AST from "./ast";
-
-function toSnakeCase(s: string): string {
-  return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
+import { toSnakeCase } from "./lowering_helpers";
 
 // â”€â”€â”€ Derived Field Emission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Derived fields become PostgreSQL generated columns (when expression supports it)
