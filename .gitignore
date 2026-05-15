@@ -4,10 +4,12 @@ node_modules/
 .pnp.js
 
 # ─── Build outputs ───────────────────────────────────────────────────────────
-# Note: compiler/dist/ is kept because the LSP depends on it as a local package.
-# Once the compiler is published to npm, add compiler/dist/ here.
+# compiler/dist/ is now excluded — the compiler is published to npm (bonescript-compiler).
+# The LSP references the npm package, not the local dist.
+compiler/dist/
 lsp/dist/
 vscode-ext/out/
+compiler/dist-test/
 *.js.map
 *.d.ts.map
 
