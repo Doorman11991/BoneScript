@@ -24,13 +24,8 @@ compiler/src/**/*.d.ts
 examples/*/output/
 examples/**/.env
 
-# ─── ShallotMMO project (generated + runtime files) ──────────────────────────
-shallot-mmo/backend/output/
-shallot-mmo/backend/output/.env
-shallot-mmo/backend/seed.js
-shallot-mmo/loadtest/node_modules/
-shallot-mmo/client/node_modules/
-shallot-mmo/client/dist/
+# ─── ShallotMMO project (excluded entirely) ──────────────────────────────────
+shallot-mmo/
 
 # ─── Test scratch files ───────────────────────────────────────────────────────
 examples/test_*.bone
@@ -80,9 +75,6 @@ coverage/
 
 # ─── Temp fix scripts ────────────────────────────────────────────────────────
 fix_*.py
-
-# ─── ShallotMMO additional ignores ───────────────────────────────────────────
-shallot-mmo/**/.env
 
 # ─── vscode-ext compiled output ──────────────────────────────────────────────
 vscode-ext/out/

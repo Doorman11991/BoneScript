@@ -1,9 +1,0 @@
-{
-  "name": "shallot-mmo-loadtest",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "ws": "8.17.1"
-  }
-}

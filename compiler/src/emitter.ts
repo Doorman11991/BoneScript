@@ -164,6 +164,16 @@ export class Emitter {
       }
     }
 
+    // Add cardinality CHECK constraints from relations
+    // has_one: enforce at most 1 child row via a partial unique index (emitted below)
+    // has_many with explicit max: enforce via CHECK on count (done via trigger — see below)
+    for (const rel of (mod as any).relations_with_cardinality || []) {
+      if (rel.cardinality && rel.cardinality.max !== "*" && typeof rel.cardinality.max === "number") {
+        // Will be enforced via trigger — placeholder comment
+        fieldLines.push(`  -- cardinality: ${rel.name} max ${rel.cardinality.max} (enforced by trigger)`);
+      }
+    }
+
     lines.push(fieldLines.join(",\n"));
     lines.push(`);`);
     lines.push(``);
@@ -179,6 +189,46 @@ export class Emitter {
     for (const rel of mod.relations || []) {
       if (rel.kind === "belongs_to") {
         lines.push(`CREATE INDEX IF NOT EXISTS idx_${tableName}_${rel.foreign_key} ON ${tableName} (${rel.foreign_key});`);
+      }
+    }
+
+    // Cardinality enforcement
+    for (const rel of mod.relations || []) {
+      // has_one: enforce via unique index on the FK column in the child table
+      if (rel.kind === "has_one") {
+        const childTable = rel.to_table;
+        const fk = rel.foreign_key;
+        lines.push(``);
+        lines.push(`-- has_one cardinality: each ${tableName.slice(0, -1)} may have at most one ${childTable.slice(0, -1)}`);
+        lines.push(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${childTable}_${fk}_unique ON ${childTable} (${fk});`);
+      }
+
+      // has_many with explicit numeric max: enforce via a BEFORE INSERT trigger
+      if (rel.kind === "has_many" && rel.cardinality && rel.cardinality.max !== "*") {
+        const maxCount = rel.cardinality.max as number;
+        const childTable = rel.to_table;
+        const fk = rel.foreign_key;
+        const fnName = `check_${tableName}_${rel.name}_max`;
+        lines.push(``);
+        lines.push(`-- has_many cardinality: max ${maxCount} ${childTable} per ${tableName.slice(0, -1)}`);
+        lines.push(`CREATE OR REPLACE FUNCTION ${fnName}()`);
+        lines.push(`RETURNS TRIGGER AS $$`);
+        lines.push(`DECLARE`);
+        lines.push(`  current_count INTEGER;`);
+        lines.push(`BEGIN`);
+        lines.push(`  SELECT COUNT(*) INTO current_count FROM ${childTable} WHERE ${fk} = NEW.${fk};`);
+        lines.push(`  IF current_count >= ${maxCount} THEN`);
+        lines.push(`    RAISE EXCEPTION 'Cardinality violation: ${tableName.slice(0, -1)} already has ${maxCount} ${childTable} (max ${maxCount})';`);
+        lines.push(`  END IF;`);
+        lines.push(`  RETURN NEW;`);
+        lines.push(`END;`);
+        lines.push(`$$ LANGUAGE plpgsql;`);
+        lines.push(``);
+        lines.push(`DROP TRIGGER IF EXISTS trg_${fnName} ON ${childTable};`);
+        lines.push(`CREATE TRIGGER trg_${fnName}`);
+        lines.push(`  BEFORE INSERT ON ${childTable}`);
+        lines.push(`  FOR EACH ROW`);
+        lines.push(`  EXECUTE FUNCTION ${fnName}();`);
       }
     }
 

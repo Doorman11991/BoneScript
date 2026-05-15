@@ -224,7 +224,17 @@ export function lowerEntity(
         foreignKey = toSnakeCase(rel.target) + "_id";
     }
 
-    return { name: rel.name, kind: rel.relationType, from_entity: entity.name, to_entity: rel.target, from_table: fromTable, to_table: toTable, foreign_key: foreignKey, junction_table: junctionTable };
+    return {
+      name: rel.name,
+      kind: rel.relationType,
+      from_entity: entity.name,
+      to_entity: rel.target,
+      from_table: fromTable,
+      to_table: toTable,
+      foreign_key: foreignKey,
+      junction_table: junctionTable,
+      cardinality: rel.cardinality ?? undefined,
+    };
   });
 
   const relatedStore = stores.find(s => s.name.toLowerCase().includes(entity.name.toLowerCase()));

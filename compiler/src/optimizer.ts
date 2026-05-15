@@ -52,7 +52,7 @@ function deadModuleElimination(s: IR.IRSystem, log: OptimizationLog[]): IR.IRSys
 
   // Seed: always-reachable kinds
   for (const m of s.modules) {
-    if (["gateway", "frontend", "auth_service", "api_service", "realtime_service"].includes(m.kind)) {
+    if (["gateway", "frontend", "auth_service", "api_service", "realtime_service", "data_store", "event_bus", "cache"].includes(m.kind)) {
       reachable.add(m.id);
     }
   }

@@ -178,6 +178,8 @@ export class TypeChecker {
       case "FlowDecl": this.checkFlow(decl); break;
       case "ConstraintDecl": this.checkConstraint(decl); break;
       case "ExtensionPointDecl": this.checkExtensionPoint(decl); break;
+      case "StoreDecl": this.checkStore(decl); break;
+      case "PolicyDecl": this.checkPolicy(decl); break;
     }
   }
 
@@ -581,6 +583,55 @@ export class TypeChecker {
       if (!resolved) {
         this.addError("T001", "Extension point '" + decl.name + "' return type is undefined", decl.loc);
       }
+    }
+  }
+
+  // ─── Store Checking ───────────────────────────────────────────────────────────
+
+  /** Supported database engines. Engines not in this set produce T014. */
+  private static readonly SUPPORTED_ENGINES = new Set(["postgresql", "redis"]);
+
+  private checkStore(decl: AST.StoreDeclNode): void {
+    if (decl.engine && !TypeChecker.SUPPORTED_ENGINES.has(decl.engine)) {
+      this.addError(
+        "T014",
+        `Store '${decl.name}' uses unsupported engine '${decl.engine}'. ` +
+        `Supported engines: ${[...TypeChecker.SUPPORTED_ENGINES].join(", ")}. ` +
+        `Other engines (dynamodb, mongodb, sqlite, s3) are not yet implemented — ` +
+        `remove the engine declaration to use the domain default (postgresql), ` +
+        `or implement a custom emitter.`,
+        decl.loc,
+      );
+    }
+
+    // Check schema field types resolve
+    for (const field of decl.schema) {
+      const resolved = this.resolveTypeExpr(field.type);
+      if (!resolved) {
+        this.addError("T001", `Store '${decl.name}' field '${field.name}' references undefined type`, field.loc);
+      }
+    }
+  }
+
+  // ─── Policy Checking ──────────────────────────────────────────────────────────
+
+  private static readonly VALID_ENCRYPTION = new Set(["at_rest", "in_transit", "both", "none"]);
+
+  private checkPolicy(decl: AST.PolicyDeclNode): void {
+    if (decl.encryption && !TypeChecker.VALID_ENCRYPTION.has(decl.encryption)) {
+      this.addError(
+        "T015",
+        `Policy '${decl.name}' has invalid encryption value '${decl.encryption}'. ` +
+        `Valid values: ${[...TypeChecker.VALID_ENCRYPTION].join(", ")}.`,
+        decl.loc,
+      );
+    }
+    if (decl.rateLimit && decl.rateLimit.count <= 0) {
+      this.addError(
+        "T015",
+        `Policy '${decl.name}' rate_limit count must be positive (> 0), got ${decl.rateLimit.count}.`,
+        decl.loc,
+      );
     }
   }
 

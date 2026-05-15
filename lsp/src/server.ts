@@ -654,7 +654,141 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
         },
       });
     }
-  }
+
+    // T003: Type mismatch in assignment — offer to cast to string
+    if (diag.message.includes('T003') || diag.message.includes('Type mismatch')) {
+      actions.push({
+        title: 'Wrap value in to_string() cast',
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        isPreferred: false,
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [{
+              // Replace the value expression on the current line with to_string(value)
+              range: diag.range,
+              newText: doc.getText(diag.range).replace(/=\s*(.+)$/, (_, v) => `= to_string(${v.trim()})`),
+            }],
+          },
+        },
+      });
+    }
+
+    // T005: Expression must type to bool — offer to wrap in comparison
+    if (diag.message.includes('T005') || diag.message.includes('must type to bool')) {
+      actions.push({
+        title: 'Add != null comparison',
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [{
+              range: diag.range,
+              newText: doc.getText(diag.range).trim() + ' != null',
+            }],
+          },
+        },
+      });
+    }
+
+    // T008: += / -= type mismatch — offer to fix the operator
+    if (diag.message.includes('T008') || diag.message.includes('+= requires') || diag.message.includes('-= requires')) {
+      actions.push({
+        title: 'Change to assignment (=)',
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [{
+              range: diag.range,
+              newText: doc.getText(diag.range).replace(/\+=/g, '=').replace(/-=/g, '='),
+            }],
+          },
+        },
+      });
+    }
+
+    // T010: Undefined state in transition — offer to add the missing state
+    const stateMatch = diag.message.match(/Undefined state '(\w+)'/);
+    if (stateMatch && (diag.message.includes('T010') || diag.message.includes('Undefined state'))) {
+      const stateName = stateMatch[1];
+      // Find the states: line and append the new state
+      const text = doc.getText();
+      const statesLineIdx = text.split('\n').findIndex(l => l.includes('states:'));
+      if (statesLineIdx >= 0) {
+        const statesLine = text.split('\n')[statesLineIdx];
+        const lastState = statesLine.trim().split(/\s*->\s*|\s*\|\s*/).pop() || '';
+        actions.push({
+          title: `Add state '${stateName}' to state machine`,
+          kind: CodeActionKind.QuickFix,
+          diagnostics: [diag],
+          edit: {
+            changes: {
+              [params.textDocument.uri]: [{
+                range: Range.create(statesLineIdx, statesLine.length, statesLineIdx, statesLine.length),
+                newText: ` -> ${stateName}`,
+              }],
+            },
+          },
+        });
+      }
+    }
+
+    // T013: Entity name used as call in flow — offer to rename to a capability
+    if (diag.message.includes('T013') || diag.message.includes('uses entity name')) {
+      const entityCallMatch = diag.message.match(/uses entity name '(\w+)'/);
+      if (entityCallMatch) {
+        const entityName = entityCallMatch[1];
+        const suggestedCap = entityName.charAt(0).toLowerCase() + entityName.slice(1) + '_action';
+        actions.push({
+          title: `Rename '${entityName}' to '${suggestedCap}' (capability name)`,
+          kind: CodeActionKind.QuickFix,
+          diagnostics: [diag],
+          edit: {
+            changes: {
+              [params.textDocument.uri]: [{
+                range: diag.range,
+                newText: doc.getText(diag.range).replace(new RegExp(`\\b${entityName}\\b`), suggestedCap),
+              }],
+            },
+          },
+        });
+      }
+    }
+
+    // T014: Unsupported engine — offer to remove the engine declaration
+    if (diag.message.includes('T014') || diag.message.includes('unsupported engine')) {
+      actions.push({
+        title: 'Remove engine declaration (use domain default)',
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [{
+              range: Range.create(line, 0, line + 1, 0),
+              newText: '',
+            }],
+          },
+        },
+      });
+    }
+
+    // T015: Invalid policy value — offer to set a valid value
+    if (diag.message.includes('T015') || diag.message.includes('invalid encryption')) {
+      actions.push({
+        title: "Set encryption to 'both'",
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [{
+              range: diag.range,
+              newText: doc.getText(diag.range).replace(/encryption:\s*\S+/, 'encryption: both'),
+            }],
+          },
+        },
+      });
+    }
 
   return actions;
 });
@@ -702,25 +836,31 @@ connection.onRenameRequest((params: RenameParams): WorkspaceEdit | null => {
     sym.events.has(oldName) || sym.stores.has(oldName) || sym.channels.has(oldName);
   if (!isDefined) return null;
 
-  // Find all occurrences of the word in the document
-  const text = doc.getText();
-  const edits: TextEdit[] = [];
   const pattern = new RegExp(`\\b${oldName}\\b`, 'g');
-  let match: RegExpExecArray | null;
+  const allChanges: Record<string, TextEdit[]> = {};
 
-  while ((match = pattern.exec(text)) !== null) {
-    const startPos = doc.positionAt(match.index);
-    const endPos = doc.positionAt(match.index + oldName.length);
-    edits.push({ range: Range.create(startPos, endPos), newText: newName });
+  // Rename in ALL open .bone documents (cross-file rename)
+  for (const openDoc of documents.all()) {
+    if (!openDoc.uri.endsWith('.bone')) continue;
+    const text = openDoc.getText();
+    const edits: TextEdit[] = [];
+    let match: RegExpExecArray | null;
+    pattern.lastIndex = 0;
+
+    while ((match = pattern.exec(text)) !== null) {
+      const startPos = openDoc.positionAt(match.index);
+      const endPos = openDoc.positionAt(match.index + oldName.length);
+      edits.push({ range: Range.create(startPos, endPos), newText: newName });
+    }
+
+    if (edits.length > 0) {
+      allChanges[openDoc.uri] = edits;
+    }
   }
 
-  if (edits.length === 0) return null;
+  if (Object.keys(allChanges).length === 0) return null;
 
-  return {
-    changes: {
-      [params.textDocument.uri]: edits,
-    },
-  };
+  return { changes: allChanges };
 });
 
 
