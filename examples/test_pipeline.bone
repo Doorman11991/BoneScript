@@ -1,0 +1,18 @@
+system PipelineTest {
+  domain: marketplace
+
+  entity Order {
+    owns: [status: string]
+  }
+
+  capability fulfill(order: Order) {
+    requires: [order.status == "pending"]
+    pipeline: {
+      validate(order)
+      reserve(order) as reservation
+      notify(order, reservation)
+      on_error: rollback
+    }
+    sync: transactional
+  }
+}

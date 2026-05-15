@@ -1,0 +1,19 @@
+system Test {
+  domain: marketplace
+
+  entity Driver {
+    owns: [name: string, capacity: uint]
+    states: available -> assigned -> delivering -> available | offline
+  }
+
+  capability find_route(start_node: string, end_node: string) {
+    algorithm: shortest_path using {
+      graph: road_network,
+      source: start_node,
+      target: end_node
+    }
+    returns: json
+    sync: eventual
+    idempotent: true
+  }
+}

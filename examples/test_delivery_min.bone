@@ -1,0 +1,35 @@
+system DeliveryTest {
+  domain: marketplace
+
+  entity Driver {
+    owns: [name: string, capacity: uint, current_load: uint]
+  }
+
+  entity Order {
+    owns: [pickup: string, dropoff: string, weight: uint, status: string]
+  }
+
+  capability fulfill_order(order: Order) {
+    requires: [order.status == "pending"]
+    pipeline: {
+      validate_order(order)
+      reserve_inventory(order) as reservation
+      assign_driver(order) as assignment
+      notify_customer(order, assignment)
+      on_error: rollback
+    }
+    sync: transactional
+    timeout: 30s
+  }
+
+  capability find_route(start_node: string, end_node: string) {
+    algorithm: shortest_path using {
+      graph: road_network,
+      source: start_node,
+      target: end_node
+    }
+    returns: json
+    sync: eventual
+    idempotent: true
+  }
+}

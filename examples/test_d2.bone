@@ -1,0 +1,14 @@
+system D {
+  entity Order { owns: [status: string] }
+
+  capability find_route(start: string, end: string) {
+    algorithm: shortest_path using {
+      graph: road_network,
+      source: start,
+      target: end
+    }
+    returns: json
+    sync: eventual
+    idempotent: true
+  }
+}

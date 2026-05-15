@@ -1,0 +1,16 @@
+system Simple {
+  domain: marketplace
+
+  entity User {
+    owns: [name: string]
+  }
+
+  capability find_path(a: string, b: string) {
+    algorithm: shortest_path using {
+      source: a,
+      target: b
+    }
+    returns: json
+    sync: eventual
+  }
+}

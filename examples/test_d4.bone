@@ -1,0 +1,14 @@
+system D {
+  entity Driver { owns: [name: string] }
+
+  capability rank_drivers(drivers: list<Driver>) {
+    algorithm: rank_by using {
+      items: drivers,
+      score_fn: driver_score,
+      order: "desc"
+    }
+    returns: list<Driver>
+    sync: eventual
+    idempotent: true
+  }
+}

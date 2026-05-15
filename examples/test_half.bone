@@ -1,0 +1,13 @@
+system T {
+  entity Order { owns: [status: string] }
+
+  capability sla(durations: list<uint>) {
+    algorithm: percentile using {
+      values: durations,
+      k: 95
+    }
+    returns: float
+    sync: eventual
+    idempotent: true
+  }
+}

@@ -1,0 +1,96 @@
+// BoneScript Example: Delivery Platform
+// Demonstrates Leap 1 (pipelines) and Leap 2 (algorithm catalog).
+
+system DeliveryPlatform {
+  domain: marketplace
+
+  // â”€â”€â”€ Entities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  entity Driver {
+    owns: [
+      name: string,
+      home_node: string,
+      capacity: uint,
+      current_load: uint
+    ]
+    constraints: [
+      name.length in 1..100,
+      capacity >= 1,
+      current_load <= capacity
+    ]
+    states: available -> assigned -> delivering -> available | offline
+    auth: jwt
+  }
+
+  entity Order {
+    owns: [
+      customer_id: uuid,
+      pickup: string,
+      dropoff: string,
+      weight: uint,
+      status: string
+    ]
+    constraints: [
+      weight > 0,
+      weight <= 100,
+      status in ["pending", "assigned", "in_transit", "delivered", "cancelled"]
+    ]
+    states: pending -> assigned -> in_transit -> delivered | cancelled
+  }
+
+  // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  store DriverStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      name: string,
+      home_node: string,
+      capacity: uint,
+      current_load: uint,
+      state: string
+    }
+  }
+
+  store OrderStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      customer_id: uuid,
+      pickup: string,
+      dropoff: string,
+      weight: uint,
+      status: string
+    }
+  }
+
+  // â”€â”€â”€ Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  event OrderAssigned {
+    payload: {
+      order_id: uuid,
+      driver_id: uuid,
+      assigned_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 1d
+  }
+
+  event OrderDelivered {
+    payload: {
+      order_id: uuid,
+      delivered_at: timestamp
+    }
+    delivery: exactly_once
+    ttl: 30d
+  }
+
+  // â”€â”€â”€ Capabilities (traditional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  capability create_order(customer: Customer, pickup: string, dropoff: string, weight: uint) {
+    requires: [weight > 0, weight <= 100]
+    effects: []
+    sync: transactional
+  }
+
+  // â”€â”€â”€ Capabilities (Leap 1: Pipelines) â”€â”}}

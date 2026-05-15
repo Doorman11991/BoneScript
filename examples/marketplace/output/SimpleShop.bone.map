@@ -1,0 +1,343 @@
+{
+  "version": 1,
+  "source_hash": "e802668954ec5c1f",
+  "source_file": "SimpleShop.bone",
+  "mappings": [
+    {
+      "generated_file": "src/routes/sellerstore.ts",
+      "generated_line": 1,
+      "bone_line": 1,
+      "bone_column": 1,
+      "description": "Module: SellerStore"
+    },
+    {
+      "generated_file": "src/routes/listingstore.ts",
+      "generated_line": 1,
+      "bone_line": 11,
+      "bone_column": 1,
+      "description": "Module: ListingStore"
+    },
+    {
+      "generated_file": "src/routes/buyerstore.ts",
+      "generated_line": 1,
+      "bone_line": 21,
+      "bone_column": 1,
+      "description": "Module: BuyerStore"
+    },
+    {
+      "generated_file": "src/routes/orderstore.ts",
+      "generated_line": 1,
+      "bone_line": 31,
+      "bone_column": 1,
+      "description": "Module: OrderStore"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 1,
+      "bone_line": 41,
+      "bone_column": 1,
+      "description": "Module: SellerService"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 51,
+      "bone_line": 51,
+      "bone_column": 3,
+      "description": "Capability: create"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 56,
+      "bone_line": 56,
+      "bone_column": 3,
+      "description": "Capability: read"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 61,
+      "bone_line": 61,
+      "bone_column": 3,
+      "description": "Capability: update"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 66,
+      "bone_line": 66,
+      "bone_column": 3,
+      "description": "Capability: delete"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 71,
+      "bone_line": 71,
+      "bone_column": 3,
+      "description": "Capability: list"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 76,
+      "bone_line": 76,
+      "bone_column": 3,
+      "description": "Capability: publish_listing"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 81,
+      "bone_line": 81,
+      "bone_column": 3,
+      "description": "Capability: archive_listing"
+    },
+    {
+      "generated_file": "src/routes/seller.ts",
+      "generated_line": 86,
+      "bone_line": 86,
+      "bone_column": 3,
+      "description": "Capability: ship_order"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 1,
+      "bone_line": 91,
+      "bone_column": 1,
+      "description": "Module: ListingService"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 101,
+      "bone_line": 101,
+      "bone_column": 3,
+      "description": "Capability: create"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 106,
+      "bone_line": 106,
+      "bone_column": 3,
+      "description": "Capability: read"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 111,
+      "bone_line": 111,
+      "bone_column": 3,
+      "description": "Capability: update"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 116,
+      "bone_line": 116,
+      "bone_column": 3,
+      "description": "Capability: delete"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 121,
+      "bone_line": 121,
+      "bone_column": 3,
+      "description": "Capability: list"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 126,
+      "bone_line": 126,
+      "bone_column": 3,
+      "description": "Capability: publish_listing"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 131,
+      "bone_line": 131,
+      "bone_column": 3,
+      "description": "Capability: archive_listing"
+    },
+    {
+      "generated_file": "src/routes/listing.ts",
+      "generated_line": 136,
+      "bone_line": 136,
+      "bone_column": 3,
+      "description": "Capability: place_order"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 1,
+      "bone_line": 141,
+      "bone_column": 1,
+      "description": "Module: BuyerService"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 151,
+      "bone_line": 151,
+      "bone_column": 3,
+      "description": "Capability: create"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 156,
+      "bone_line": 156,
+      "bone_column": 3,
+      "description": "Capability: read"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 161,
+      "bone_line": 161,
+      "bone_column": 3,
+      "description": "Capability: update"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 166,
+      "bone_line": 166,
+      "bone_column": 3,
+      "description": "Capability: delete"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 171,
+      "bone_line": 171,
+      "bone_column": 3,
+      "description": "Capability: list"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 176,
+      "bone_line": 176,
+      "bone_column": 3,
+      "description": "Capability: place_order"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 181,
+      "bone_line": 181,
+      "bone_column": 3,
+      "description": "Capability: process_payment"
+    },
+    {
+      "generated_file": "src/routes/buyer.ts",
+      "generated_line": 186,
+      "bone_line": 186,
+      "bone_column": 3,
+      "description": "Capability: post_review"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 1,
+      "bone_line": 191,
+      "bone_column": 1,
+      "description": "Module: OrderService"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 201,
+      "bone_line": 201,
+      "bone_column": 3,
+      "description": "Capability: create"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 206,
+      "bone_line": 206,
+      "bone_column": 3,
+      "description": "Capability: read"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 211,
+      "bone_line": 211,
+      "bone_column": 3,
+      "description": "Capability: update"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 216,
+      "bone_line": 216,
+      "bone_column": 3,
+      "description": "Capability: delete"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 221,
+      "bone_line": 221,
+      "bone_column": 3,
+      "description": "Capability: list"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 226,
+      "bone_line": 226,
+      "bone_column": 3,
+      "description": "Capability: process_payment"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 231,
+      "bone_line": 231,
+      "bone_column": 3,
+      "description": "Capability: ship_order"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 236,
+      "bone_line": 236,
+      "bone_column": 3,
+      "description": "Capability: cancel_order"
+    },
+    {
+      "generated_file": "src/routes/order.ts",
+      "generated_line": 241,
+      "bone_line": 241,
+      "bone_column": 3,
+      "description": "Capability: post_review"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 1,
+      "bone_line": 246,
+      "bone_column": 1,
+      "description": "Module: ReviewService"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 256,
+      "bone_line": 256,
+      "bone_column": 3,
+      "description": "Capability: create"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 261,
+      "bone_line": 261,
+      "bone_column": 3,
+      "description": "Capability: read"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 266,
+      "bone_line": 266,
+      "bone_column": 3,
+      "description": "Capability: update"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 271,
+      "bone_line": 271,
+      "bone_column": 3,
+      "description": "Capability: delete"
+    },
+    {
+      "generated_file": "src/routes/review.ts",
+      "generated_line": 276,
+      "bone_line": 276,
+      "bone_column": 3,
+      "description": "Capability: list"
+    },
+    {
+      "generated_file": "src/routes/apigateway.ts",
+      "generated_line": 1,
+      "bone_line": 281,
+      "bone_column": 1,
+      "description": "Module: APIGateway"
+    }
+  ]
+}

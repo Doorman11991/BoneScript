@@ -1,0 +1,14 @@
+system D {
+  entity Order { owns: [status: string] }
+  entity Driver { owns: [name: string] }
+
+  capability assign_orders(orders: list<Order>, drivers: list<Driver>) {
+    algorithm: bipartite_matching using {
+      left: orders,
+      right: drivers,
+      edges: feasibility_graph
+    }
+    returns: json
+    sync: transactional
+  }
+}

@@ -1,0 +1,9 @@
+system T {
+  entity Order { owns: [status: string] }
+
+  capability create_order(customer: Customer, pickup: string, dropoff: string, weight: uint) {
+    requires: [weight > 0, weight <= 100]
+    effects: []
+    sync: transactional
+  }
+}

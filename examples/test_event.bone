@@ -1,0 +1,22 @@
+system T {
+  entity Order { owns: [status: string] }
+
+  event OrderAssigned {
+    payload: {
+      order_id: uuid,
+      driver_id: uuid,
+      assigned_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 1d
+  }
+
+  event OrderDelivered {
+    payload: {
+      order_id: uuid,
+      delivered_at: timestamp
+    }
+    delivery: exactly_once
+    ttl: 30d
+  }
+}

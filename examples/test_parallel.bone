@@ -1,0 +1,12 @@
+system PT {
+  entity Driver { owns: [name: string] }
+
+  capability gather(driver: Driver) {
+    parallel: {
+      fetch_a(driver)
+      fetch_b(driver)
+    }
+    returns: json
+    sync: eventual
+  }
+}
