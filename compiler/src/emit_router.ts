@@ -172,7 +172,7 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   lines.push(`});`);
   lines.push(``);
 
-  // LIST
+  // LIST — COUNT(*) OVER() window function avoids a separate COUNT round-trip
   const joinRelations = mod.relations.filter(r => r.kind === "has_one" || r.kind === "belongs_to");
   lines.push(`// LIST`);
   lines.push(`${toCamelCase(routeBase)}Router.get("/", requireAuth, async (req: Request, res: Response) => {`);
@@ -187,12 +187,14 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
         ? `LEFT JOIN ${r.to_table} ${alias} ON ${tableName}.${r.foreign_key} = ${alias}.id`
         : `LEFT JOIN ${r.to_table} ${alias} ON ${alias}.${r.foreign_key} = ${tableName}.id`;
     }).join(" ");
-    lines.push(`    const rows = await query(\`SELECT ${tableName}.*, ${joinRelations.map(r => `row_to_json(${r.to_table.slice(0, -1)}.*) as ${r.name}`).join(", ")} FROM ${tableName} ${joinClauses} ORDER BY ${tableName}.created_at DESC LIMIT $1 OFFSET $2\`, [pageSize, offset]);`);
+    const relCols = joinRelations.map(r => `row_to_json(${r.to_table.slice(0, -1)}.*) as ${r.name}`).join(", ");
+    lines.push(`    const rows = await query(\`SELECT ${tableName}.*, ${relCols}, COUNT(*) OVER() AS __total FROM ${tableName} ${joinClauses} ORDER BY ${tableName}.created_at DESC LIMIT $1 OFFSET $2\`, [pageSize, offset]);`);
   } else {
-    lines.push(`    const rows = await query(\`SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT $1 OFFSET $2\`, [pageSize, offset]);`);
+    lines.push(`    const rows = await query(\`SELECT *, COUNT(*) OVER() AS __total FROM ${tableName} ORDER BY created_at DESC LIMIT $1 OFFSET $2\`, [pageSize, offset]);`);
   }
-  lines.push(`    const [{ count }] = await query(\`SELECT COUNT(*) as count FROM ${tableName}\`);`);
-  lines.push(`    res.json({ items: rows, total: parseInt(count), page, page_size: pageSize });`);
+  lines.push(`    const total = rows.length > 0 ? parseInt((rows[0] as any).__total) : 0;`);
+  lines.push(`    const items = rows.map((r: any) => { const { __total, ...rest } = r; return rest; });`);
+  lines.push(`    res.json({ items, total, page, page_size: pageSize });`);
   lines.push(`  } catch (e: any) {`);
   lines.push(`    res.status(500).json({ error: { code: "DB_ERROR", message: e.message } });`);
   lines.push(`  }`);
@@ -265,9 +267,11 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
       lines.push(`    const page = parseInt(req.query.page as string) || 1;`);
       lines.push(`    const pageSize = Math.min(parseInt(req.query.page_size as string) || 50, 100);`);
       lines.push(`    const offset = (page - 1) * pageSize;`);
-      lines.push(`    const rows = await query(\`SELECT * FROM ${rel.to_table} WHERE ${rel.foreign_key} = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3\`, [req.params.id, pageSize, offset]);`);
-      lines.push(`    const [{ count }] = await query(\`SELECT COUNT(*) as count FROM ${rel.to_table} WHERE ${rel.foreign_key} = $1\`, [req.params.id]);`);
-      lines.push(`    res.json({ items: rows, total: parseInt(count), page, page_size: pageSize });`);
+      lines.push(`    // COUNT(*) OVER() avoids a separate COUNT round-trip`);
+      lines.push(`    const rows = await query(\`SELECT *, COUNT(*) OVER() AS __total FROM ${rel.to_table} WHERE ${rel.foreign_key} = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3\`, [req.params.id, pageSize, offset]);`);
+      lines.push(`    const total = rows.length > 0 ? parseInt((rows[0] as any).__total) : 0;`);
+      lines.push(`    const items = rows.map((r: any) => { const { __total, ...rest } = r; return rest; });`);
+      lines.push(`    res.json({ items, total, page, page_size: pageSize });`);
       lines.push(`  } catch (e: any) {`);
       lines.push(`    res.status(500).json({ error: { code: "DB_ERROR", message: e.message } });`);
       lines.push(`  }`);
