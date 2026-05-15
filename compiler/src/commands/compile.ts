@@ -53,6 +53,7 @@ export async function runCompile(source: string, resolved: string): Promise<void
       for (const err of typeErrors) {
         console.log(`         ${err.code} at ${err.loc.line}:${err.loc.column}: ${err.message}`);
       }
+      process.exit(1);
     } else {
       console.log(`  [3/7] Type check: v (0 errors)`);
     }
@@ -83,11 +84,13 @@ export async function runCompile(source: string, resolved: string): Promise<void
     // Stage 5: Constraint Solve
     const solver = new ConstraintSolver();
     let totalResolved = 0;
+    let solverFailed = false;
     for (const sys of irSystems) {
       const result = solver.solve(sys);
       sys.resolution = result.resolution;
       totalResolved += Object.keys(result.resolution).length;
       if (result.errors.length > 0) {
+        solverFailed = true;
         console.log(`  [5/7] Constraint solve: ${result.errors.length} error(s)`);
         for (const err of result.errors) console.log(`         x ${err}`);
       } else {
@@ -95,7 +98,24 @@ export async function runCompile(source: string, resolved: string): Promise<void
         for (const a of result.assumptions.slice(0, 5)) console.log(`         ${a}`);
         if (result.assumptions.length > 5) console.log(`         ... and ${result.assumptions.length - 5} more`);
       }
+
+      // Back-propagate resolved values into module configs so emitters pick them up.
+      // The solver resolves keys like "APIGateway.rate_limit" → write back to mod.config.
+      for (const mod of sys.modules) {
+        for (const [key, value] of Object.entries(result.resolution)) {
+          const prefix = `${mod.name}.`;
+          if (key.startsWith(prefix)) {
+            const prop = key.slice(prefix.length);
+            // Only overwrite if the module config doesn't already have an explicit value
+            if (mod.config[prop] === undefined || mod.config[prop] === null) {
+              const numVal = Number(value);
+              mod.config[prop] = isNaN(numVal) ? value : numVal;
+            }
+          }
+        }
+      }
     }
+    if (solverFailed) process.exit(1);
 
     // Stage 6: Code Emit
     const emitter = new FullEmitter();
@@ -108,18 +128,29 @@ export async function runCompile(source: string, resolved: string): Promise<void
       console.log(`         ${lang}: ${count} file(s)`);
     }
 
-    // Stage 7: Verify
-    const verifyResult = new Verifier().verify(irSystems[0], allFiles);
-    const errCount  = verifyResult.issues.filter(i => i.severity === "error").length;
-    const warnCount = verifyResult.issues.filter(i => i.severity === "warning").length;
-    if (verifyResult.passed) {
-      console.log(`  [7/7] Verify: v (${allFiles.length} files, ${warnCount} warnings)`);
+    // Stage 7: Verify — check ALL systems, not just the first
+    let verifyFailed = false;
+    let totalVerifyErrors = 0;
+    let totalVerifyWarnings = 0;
+    for (const sys of irSystems) {
+      const verifyResult = new Verifier().verify(sys, allFiles);
+      const errCount  = verifyResult.issues.filter(i => i.severity === "error").length;
+      const warnCount = verifyResult.issues.filter(i => i.severity === "warning").length;
+      totalVerifyErrors   += errCount;
+      totalVerifyWarnings += warnCount;
+      if (!verifyResult.passed) verifyFailed = true;
+      for (const issue of verifyResult.issues.slice(0, 10)) {
+        console.log(`         ${issue.severity === "error" ? "x" : "!"} ${issue.code}: ${issue.message}`);
+      }
+    }
+    if (verifyFailed) {
+      console.log(`  [7/7] Verify: FAILED (${totalVerifyErrors} errors, ${totalVerifyWarnings} warnings)`);
     } else {
-      console.log(`  [7/7] Verify: FAILED (${errCount} errors, ${warnCount} warnings)`);
+      console.log(`  [7/7] Verify: v (${allFiles.length} files, ${totalVerifyWarnings} warnings)`);
     }
-    for (const issue of verifyResult.issues.slice(0, 10)) {
-      console.log(`         ${issue.severity === "error" ? "x" : "!"} ${issue.code}: ${issue.message}`);
-    }
+
+    // Abort before writing output if verification failed
+    if (verifyFailed) process.exit(1);
 
     // Write output — all writes in parallel per directory
     const outputDir = path.resolve(path.dirname(resolved), "output");

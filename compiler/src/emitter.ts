@@ -62,6 +62,12 @@ function toSqlType(irType: string): string {
   return "JSONB";
 }
 
+/** Returns an inline SQL CHECK constraint for types that need one, or empty string. */
+function sqlCheckConstraint(irType: string): string {
+  if (irType === "uint") return " CHECK (VALUE >= 0)";
+  return "";
+}
+
 function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
@@ -126,7 +132,7 @@ export class Emitter {
 
     const fieldLines: string[] = [];
     for (const field of model.fields) {
-      let line = `  ${field.name} ${toSqlType(field.type)}`;
+      let line = `  ${field.name} ${toSqlType(field.type)}${sqlCheckConstraint(field.type)}`;
       if (!field.nullable) line += " NOT NULL";
       if (field.default_value) {
         if (field.default_value === "gen_random_uuid()") line += " DEFAULT gen_random_uuid()";

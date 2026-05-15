@@ -79,12 +79,12 @@ export function lowerChannel(systemName: string, channel: AST.ChannelDeclNode): 
 
 // ─── Event Lowering ───────────────────────────────────────────────────────────
 
-export function lowerEvent(systemName: string, ev: AST.EventDeclNode): IR.IREvent {
+export function lowerEvent(systemName: string, ev: AST.EventDeclNode, source: string): IR.IREvent {
   return {
     id: makeId(systemName, "event", ev.name),
     name: ev.name,
     payload: ev.payload.map(lowerFieldHelper),
-    source: "unknown",
+    source,
     delivery: (ev.delivery as IR.IRDeliveryMode) || "at_least_once",
     ordering: "fifo",
     ttl_ms: parseDurationMs(ev.ttl),

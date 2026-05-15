@@ -42,6 +42,7 @@ examples/marketplace/run_tests.ts
 # ─── Python scripts used during development ──────────────────────────────────
 lsp/src/gen_server*.py
 compiler/src/*.py
+fix_*.py
 
 # ─── Environment files ───────────────────────────────────────────────────────
 .env
@@ -76,3 +77,12 @@ desktop.ini
 # ─── Coverage ────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ─── Temp fix scripts ────────────────────────────────────────────────────────
+fix_*.py
+
+# ─── ShallotMMO additional ignores ───────────────────────────────────────────
+shallot-mmo/**/.env
+
+# ─── vscode-ext compiled output ──────────────────────────────────────────────
+vscode-ext/out/

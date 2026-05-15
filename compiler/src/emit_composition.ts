@@ -57,7 +57,30 @@ export function emitPipelineBody(method: IR.IRMethod, indent: string = "    "): 
     } else if (p.on_error.action === "ignore") {
       lines.push(`${indent}  // on_error: ignore â€” log only`);
     } else if (p.on_error.action === "retry") {
-      lines.push(`${indent}  // on_error: retry not yet supported in inline emission`);
+      // on_error: retry — re-run the entire pipeline with exponential backoff.
+      // Wraps the pipeline steps in a retry loop. The outer try/catch feeds __err here.
+      lines.push(`${indent}  // on_error: retry with exponential backoff`);
+      lines.push(`${indent}  const __maxAttempts = ${method.retry?.max_attempts ?? 3};`);
+      lines.push(`${indent}  const __backoffMs = ${method.retry?.interval_ms ?? 1000};`);
+      lines.push(`${indent}  let __lastErr = __err;`);
+      lines.push(`${indent}  for (let __attempt = 1; __attempt <= __maxAttempts; __attempt++) {`);
+      lines.push(`${indent}    await new Promise(r => setTimeout(r, __backoffMs * Math.pow(2, __attempt - 1)));`);
+      lines.push(`${indent}    try {`);
+      // Re-emit all pipeline steps inside the retry loop
+      for (const step of p.steps) {
+        const callExpr = generateStepCall(step);
+        if (step.bind_as) {
+          lines.push(`${indent}      __pipeline_results["${step.bind_as}"] = await ${callExpr};`);
+        } else {
+          lines.push(`${indent}      await ${callExpr};`);
+        }
+      }
+      lines.push(`${indent}      return { ok: true, value: __pipeline_results } as any; // retry succeeded`);
+      lines.push(`${indent}    } catch (__retryErr: any) {`);
+      lines.push(`${indent}      __lastErr = __retryErr;`);
+      lines.push(`${indent}    }`);
+      lines.push(`${indent}  }`);
+      lines.push(`${indent}  return { ok: false, error: { code: "PIPELINE_RETRY_EXHAUSTED", message: __lastErr.message, attempts: __maxAttempts } } as any;`);
     }
   } else {
     // Default: rollback on error
@@ -100,9 +123,19 @@ function emitParallelPipeline(method: IR.IRMethod, indent: string): string {
 }
 
 function generateStepCall(step: IR.IRPipelineStep): string {
-  // Replace any args that reference previous bindings with __pipeline_results
+  // Substitute any arg that references a previous step's bind_as result
+  // e.g. if a prior step bound its result as "payment", an arg of "payment"
+  // becomes __pipeline_results["payment"]
   const args = step.call_args.map(arg => {
-    // If arg looks like an identifier path, check if it might be a binding ref
+    // Simple identifier that looks like a binding reference
+    if (/^\w+$/.test(arg.trim())) {
+      return `(__pipeline_results["${arg.trim()}"] ?? ${arg.trim()})`;
+    }
+    // Dotted path like "payment.id" — resolve the root from pipeline results
+    const dotMatch = arg.trim().match(/^(\w+)(\..+)$/);
+    if (dotMatch) {
+      return `(__pipeline_results["${dotMatch[1]}"] as any)${dotMatch[2]} ?? undefined`;
+    }
     return arg;
   });
   return `${step.call_name}(${args.join(", ")})`;

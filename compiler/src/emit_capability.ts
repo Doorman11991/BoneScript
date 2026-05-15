@@ -191,6 +191,7 @@ function compileEffect(
   mod: IR.IRModule,
   system: IR.IRSystem,
   paramIdx: { n: number },
+  method?: IR.IRMethod,
 ): CompiledEffect | null {
   const targetParts = effect.target.split(".");
   if (targetParts.length < 2) return null;
@@ -199,7 +200,20 @@ function compileEffect(
   const fieldName   = targetParts[1];
   const nestedPath  = targetParts.slice(2);
 
+  // Resolve the model: first try matching by param name → entity type via method inputs,
+  // then fall back to matching by entity name directly.
   const model = (() => {
+    // If we have method context, resolve the param name to its entity type
+    if (method) {
+      const param = method.input.find(p => p.name === entityParam);
+      if (param) {
+        for (const m of system.modules) {
+          const found = m.models.find(mdl => mdl.name === param.type || mdl.name.toLowerCase() === param.type.toLowerCase());
+          if (found) return found;
+        }
+      }
+    }
+    // Fall back to matching by entity name directly
     for (const m of system.modules) {
       const found = m.models.find(mdl =>
         toSnakeCase(mdl.name) === entityParam || mdl.name.toLowerCase() === entityParam.toLowerCase()
@@ -221,12 +235,15 @@ function compileEffect(
     const p1 = `$${paramIdx.n++}`;
     const p2 = `$${paramIdx.n++}`;
     const jsonbPathLiteral = `'{${nestedPath.join(",")}}'`;
+    // Use to_jsonb($1) directly — casting via ::text loses type information for
+    // non-string values (numbers, booleans, objects). to_jsonb() handles all
+    // PostgreSQL types correctly without an intermediate text cast.
     return {
       tableName, entityParam, idParam,
       assignments: [],
       description: `${effect.target} = ${effect.value}`,
       standalone: {
-        sql: `UPDATE ${tableName} SET ${fieldName} = jsonb_set(COALESCE(${fieldName}, '{}'), ${jsonbPathLiteral}, to_jsonb(${p1}::text), true), updated_at = NOW() WHERE id = ${p2} RETURNING *`,
+        sql: `UPDATE ${tableName} SET ${fieldName} = jsonb_set(COALESCE(${fieldName}, '{}'), ${jsonbPathLiteral}, to_jsonb(${p1}), true), updated_at = NOW() WHERE id = ${p2} RETURNING *`,
         params: [valueTs, idParam],
       },
     };
@@ -490,7 +507,7 @@ export function emitCapabilityBody(
     lines.push(`${indent}// Effects (batched by entity to minimise round-trips)`);
 
     const paramIdx = { n: 1 };
-    const compiled = method.effects.map(e => compileEffect(e, mod, system, paramIdx));
+    const compiled = method.effects.map(e => compileEffect(e, mod, system, paramIdx, method));
     const { batches, standalones } = batchEffects(compiled);
 
     // Emit batched UPDATEs
@@ -518,12 +535,50 @@ export function emitCapabilityBody(
       lines.push(`${indent}}`);
     }
 
-    // Fallback for effects that couldn't be compiled
+    // Fallback for effects that couldn't be compiled.
+    // Collection-level effects (e.g. list<T>.field = value) are not yet supported
+    // by the batch compiler — emit a clear TODO rather than silently dropping them.
+    // Effects that reference a completely unknown model are a hard error.
     for (const effect of method.effects) {
       const paramIdx2 = { n: 1 };
-      if (!compileEffect(effect, mod, system, paramIdx2)) {
-        lines.push(`${indent}// EFFECT: ${effect.target} ${effect.op === "assign" ? "=" : effect.op === "add" ? "+=" : "-="} ${effect.value}`);
-        lines.push(`${indent}// TODO: Implement this effect manually`);
+      if (!compileEffect(effect, mod, system, paramIdx2, method)) {
+        const targetParts = effect.target.split(".");
+        const paramName = targetParts[0];
+        const param = method.input.find(p => p.name === paramName);
+        const isCollectionEffect = param && (param.type.startsWith("list<") || param.type.startsWith("set<"));
+
+        if (isCollectionEffect) {
+          // Collection-level effects: apply the field update to all items in the collection
+          // using a single batched UPDATE ... WHERE id = ANY($ids::uuid[])
+          const innerType = param.type.replace(/^(list|set)<(.+)>$/, "$2");
+          // Find the model for the inner element type
+          let elemModel: IR.IRModel | undefined;
+          for (const m of system.modules) {
+            elemModel = m.models.find(mdl => mdl.name === innerType || mdl.name.toLowerCase() === innerType.toLowerCase());
+            if (elemModel) break;
+          }
+          const tableName = elemModel ? (elemModel.name.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase() + "s") : (innerType.toLowerCase() + "s");
+          const fieldName = targetParts[1];
+          const valueTs = targetParts[1] ? effect.value : "null";
+          const opSql = effect.op === "add"
+            ? `${fieldName} = ${fieldName} + $1`
+            : effect.op === "remove"
+              ? `${fieldName} = ${fieldName} - $1`
+              : `${fieldName} = $1`;
+          lines.push(`${indent}// Collection effect: ${effect.target} ${effect.op === "assign" ? "=" : effect.op === "add" ? "+=" : "-="} ${effect.value}`);
+          lines.push(`${indent}if (${paramName} && ${paramName}.length > 0) {`);
+          lines.push(`${indent}  const __ids_${paramName} = ${paramName}.map((x: any) => x.id ?? x);`);
+          lines.push(`${indent}  await query(`);
+          lines.push(`${indent}    \`UPDATE ${tableName} SET ${opSql}, updated_at = NOW() WHERE id = ANY($2::uuid[])\`,`);
+          lines.push(`${indent}    [${effect.value}, __ids_${paramName}],`);
+          lines.push(`${indent}  );`);
+          lines.push(`${indent}}`);
+        } else {
+          throw new Error(
+            `Unsupported effect in method '${method.name}': target '${effect.target}' could not be resolved to a known model field. ` +
+            `Ensure the effect target matches a declared entity field (e.g. 'entityName.fieldName').`
+          );
+        }
       }
     }
     lines.push(``);

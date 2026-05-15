@@ -336,23 +336,25 @@ export class TypeChecker {
   // â”€â”€â”€ Flow Checking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private checkFlow(decl: AST.FlowDeclNode) {
-    for (const step of decl.steps) {
-      // Check step action references a valid capability or function
-      if (!this.symbols.capabilities.has(step.action.name) &&
-          !this.symbols.entities.has(step.action.name)) {
-        // Allow â€” could be a helper function not yet declared
-        // In strict mode this would be T012
-      }
-
-      // Check compensation exists if step has one
-      if (step.compensate) {
-        // Same check â€” compensation should reference a valid capability
-      }
-    }
-
     // Check at least 2 steps (ontology requirement)
     if (decl.steps.length < 2) {
       this.addError("T012", `Flow '${decl.name}' must have at least 2 steps`, decl.loc);
+    }
+
+    for (const step of decl.steps) {
+      // Flow steps may call external service endpoints (not just local capabilities).
+      // Only error if the name collides with a declared entity name, which would be
+      // a definite mistake. Undeclared names are treated as external HTTP calls.
+      if (this.symbols.entities.has(step.action.name)) {
+        this.addError("T013",
+          `Flow '${decl.name}' step '${step.name}' uses entity name '${step.action.name}' as a call — did you mean a capability?`,
+          decl.loc);
+      }
+      if (step.compensate && this.symbols.entities.has(step.compensate.name)) {
+        this.addError("T013",
+          `Flow '${decl.name}' step '${step.name}' compensation uses entity name '${step.compensate.name}' as a call — did you mean a capability?`,
+          decl.loc);
+      }
     }
   }
 
@@ -496,8 +498,21 @@ export class TypeChecker {
     if (expr.name === "now") return prim("timestamp");
     if (expr.name === "count") return prim("uint");
     if (expr.name === "sum") return prim("uint");
+    if (expr.name === "min" || expr.name === "max") return prim("uint");
+    if (expr.name === "abs") return prim("uint");
+    if (expr.name === "floor" || expr.name === "ceil" || expr.name === "round") return prim("int");
+    if (expr.name === "len" || expr.name === "size") return prim("uint");
+    if (expr.name === "contains" || expr.name === "starts_with" || expr.name === "ends_with") return prim("bool");
+    if (expr.name === "to_string") return prim("string");
+    if (expr.name === "to_int" || expr.name === "to_uint") return prim("int");
+    if (expr.name === "to_float") return prim("float");
 
-    // User-defined â€” return json as permissive fallback
+    // Check if it's a declared capability — use json as safe fallback for its return
+    if (this.symbols.capabilities.has(expr.name)) {
+      return prim("json");
+    }
+
+    // Unknown user-defined function — permissive fallback
     return prim("json");
   }
 

@@ -58,9 +58,27 @@ export class Lowering {
       modules.push(lowerChannel(this.systemName, channel));
     }
 
+    // Build a map from event name → emitting module id by scanning all capabilities
+    // across all entities. This resolves the event source before lowering events.
+    const eventSourceMap = new Map<string, string>();
+    for (const entity of entities) {
+      const moduleId = makeId(this.systemName, "api_service", `${entity.name}Service`);
+      const relatedCaps = capabilities.filter(c =>
+        c.params.some(p => p.type.kind === "EntityRefType" && p.type.name === entity.name)
+      );
+      for (const cap of relatedCaps) {
+        for (const emit of cap.emits) {
+          if (!eventSourceMap.has(emit.eventName)) {
+            eventSourceMap.set(emit.eventName, moduleId);
+          }
+        }
+      }
+    }
+
     // Events
     for (const ev of eventDecls) {
-      events.push(lowerEvent(this.systemName, ev));
+      const source = eventSourceMap.get(ev.name) || "unknown";
+      events.push(lowerEvent(this.systemName, ev, source));
     }
 
     // Flows

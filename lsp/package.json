@@ -1,6 +1,6 @@
 {
   "name": "bonescript-lsp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "BoneScript Language Server",
   "main": "dist/server.js",
   "scripts": {

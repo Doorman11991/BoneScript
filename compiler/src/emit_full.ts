@@ -27,11 +27,13 @@ import { emitFlowRuntime } from "./emit_extras";
 import { emitAlgorithmsFile, collectUsedAlgorithms } from "./emit_composition";
 import { emitExtensionPointStub } from "./extension_manager";
 import * as AST from "./ast";
-import { emitDurableEventBus, emitOutboxSchema } from "./emit_events";
+import { emitDurableEventBus, emitOutboxSchema, emitTypedEventPublishers } from "./emit_events";
 import { emitBatchExecutor } from "./emit_batch";
 import { emitSourceMapFile, emitDebugHandler } from "./emit_sourcemap";
 import { emitTestSuite } from "./emit_tests";
 import { emitDockerfile, emitDockerignore, emitK8sDeployment, emitGithubActions } from "./emit_deploy";
+import { emitModelFile, emitModelsIndex } from "./emit_models";
+import { emitOpenApiSchema } from "./emit_openapi";
 
 function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
@@ -54,6 +56,10 @@ export class FullEmitter {
     files.push({ path: "src/events.ts", content: emitDurableEventBus(system), language: "typescript", source_module: "infra" });
     // Outbox SQL schema
     files.push({ path: "migrations/event_outbox.sql", content: emitOutboxSchema(), language: "sql", source_module: "infra" });
+    // Typed event publisher functions (one per declared event)
+    if (system.events.length > 0) {
+      files.push({ path: "src/publishers.ts", content: emitTypedEventPublishers(system), language: "typescript", source_module: "infra" });
+    }
     files.push({ path: "src/auth.ts", content: emitAuthMiddleware(system), language: "typescript", source_module: "infra" });
     files.push({ path: "src/logger.ts", content: emitLogger(system), language: "typescript", source_module: "infra" });
     files.push({ path: "src/metrics.ts", content: emitMetrics(), language: "typescript", source_module: "infra" });
@@ -156,6 +162,29 @@ export class FullEmitter {
     // 5. Source: main entry point
     files.push({ path: "src/index.ts", content: emitIndex(system), language: "typescript", source_module: "root" });
 
+    // 5a. Model interfaces, schemas, and validators (one file per model)
+    const modelFiles: string[] = [];
+    for (const mod of system.modules) {
+      for (const model of mod.models) {
+        const modelPath = `src/models/${toSnakeCase(model.name)}.ts`;
+        files.push({
+          path: modelPath,
+          content: emitModelFile(model, mod, system),
+          language: "typescript",
+          source_module: mod.id,
+        });
+        modelFiles.push(modelPath);
+      }
+    }
+    if (modelFiles.length > 0) {
+      files.push({
+        path: "src/models/index.ts",
+        content: emitModelsIndex(system),
+        language: "typescript",
+        source_module: "shared",
+      });
+    }
+
     // 6. SQL migrations — run schema emitter ONCE, then match by model name
     const schemas: string[] = [];
     const allSchemaFiles = this.schemaEmitter.emit(system);
@@ -179,6 +208,12 @@ export class FullEmitter {
 
     // 9. README
     files.push({ path: "README.md", content: this.emitReadme(system), language: "yaml", source_module: "root" });
+
+    // 9a. OpenAPI schema (spec/09_CODEGEN.md §2 — ApiService secondary target)
+    const openApiContent = emitOpenApiSchema(system);
+    if (openApiContent) {
+      files.push({ path: "openapi.json", content: openApiContent, language: "json", source_module: "root" });
+    }
 
     // 10. Source map + debug handler
     files.push({ path: `${system.name}.bone.map`, content: emitSourceMapFile(system, `${system.name}.bone`), language: "json", source_module: "root" });

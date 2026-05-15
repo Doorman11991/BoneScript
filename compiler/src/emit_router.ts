@@ -81,10 +81,12 @@ export function emitStateMachineRuntime(sm: IR.IRStateMachine): string {
   lines.push(``);
   lines.push(`export function transition${sm.entity}(`);
   lines.push(`  current: ${sm.entity}State,`);
-  lines.push(`  trigger: string`);
+  lines.push(`  trigger: string,`);
+  lines.push(`  guard?: () => boolean`);
   lines.push(`): { ok: true; next: ${sm.entity}State } | { ok: false; error: string } {`);
   lines.push(`  const next = TRANSITIONS[current]?.[trigger];`);
   lines.push(`  if (!next) return { ok: false, error: \`Invalid transition: \${current} --[\${trigger}]--> ?\` };`);
+  lines.push(`  if (guard && !guard()) return { ok: false, error: \`Guard failed for transition: \${current} --[\${trigger}]--> \${next}\` };`);
   lines.push(`  return { ok: true, next };`);
   lines.push(`}`);
   lines.push(``);
@@ -115,6 +117,13 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   lines.push(`const { shortestPath, topologicalSort, binarySearch, bipartiteMatching, roundRobin, weightedAverage, percentile, rankBy, consistentHash } = __algorithms as any;`);
   lines.push(``);
 
+  // Import broadcastToChannel if any capability uses sync: realtime
+  const hasRealtime = mod.interfaces.some(i => i.methods.some(m => m.sync === "realtime"));
+  const hasWebSocket = system.modules.some(m => m.kind === "realtime_service");
+  if (hasRealtime && hasWebSocket) {
+    lines.push(`import { broadcastToChannel } from "../websocket";`);
+    lines.push(``);
+  }
   const unknownFunctions = collectUnknownFunctions(mod);
   if (unknownFunctions.size > 0) {
     lines.push(`// User-defined functions referenced in effects — implement these or use extension_point`);
@@ -363,9 +372,7 @@ export function emitCapabilityEndpoint(
     lines.push(`    __client.release();`);
     lines.push(`  }`);
   } else if (method.sync === "realtime") {
-    lines.push(`    if (typeof broadcastToChannel === "function") {`);
-    lines.push(`      broadcastToChannel("${mod.name}", { type: "${method.name}", payload: req.body, actor: auth.actor_id });`);
-    lines.push(`    }`);
+    lines.push(`    broadcastToChannel("${mod.name}", { type: "${method.name}", payload: req.body, actor: auth.actor_id });`);
     lines.push(`  } catch (e: any) {`);
     lines.push(`    res.status(400).json({ error: { code: "CAPABILITY_FAILED", message: e.message } });`);
     lines.push(`  }`);

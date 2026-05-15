@@ -41,16 +41,18 @@ export class Verifier {
   verify(system: IR.IRSystem, files: EmittedFile[]): VerifyResult {
     const issues: VerifyIssue[] = [];
 
-    // â”€â”€â”€ IR Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
+    // ─── IR Validation ────────────────────────────────────────────────────────
     this.checkDependencies(system, issues);
+    this.checkEventSources(system, issues);       // V002
     this.checkDuplicateIds(system, issues);
     this.checkModels(system, issues);
     this.checkStateMachines(system, issues);
     this.checkCircularDeps(system, issues);
+    this.checkMethodEffects(system, issues);       // V006
+    this.checkAuthDependencies(system, issues);    // V011
+    this.checkResolutionMap(system, issues);       // V012
 
-    // â”€â”€â”€ Generated Code Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
+    // ─── Generated Code Validation ────────────────────────────────────────────
     this.checkTypeScriptSyntax(files, issues);
     this.checkSqlSyntax(files, issues);
     this.checkImports(files, issues);
@@ -333,6 +335,106 @@ export class Verifier {
       }
     }
   }
+
+
+  // ─── V002: Event source exists as a module ────────────────────────────────
+  private checkEventSources(system: IR.IRSystem, issues: VerifyIssue[]) {
+    const moduleIds = new Set(system.modules.map(m => m.id));
+    for (const ev of system.events) {
+      if (ev.source && ev.source !== "unknown" && !moduleIds.has(ev.source)) {
+        issues.push({
+          code: "V002",
+          severity: "warning",
+          message: `Event '${ev.name}' source '${ev.source}' does not match any module id`,
+          location: ev.id,
+        });
+      }
+    }
+  }
+
+  // ─── V006: Effects target fields that exist ───────────────────────────────
+  private checkMethodEffects(system: IR.IRSystem, issues: VerifyIssue[]) {
+    // Build a map of all model field names by model name
+    const modelFields = new Map<string, Set<string>>();
+    for (const mod of system.modules) {
+      for (const model of mod.models) {
+        const fields = new Set(model.fields.map(f => f.name));
+        modelFields.set(model.name, fields);
+        modelFields.set(model.name.toLowerCase(), fields);
+      }
+    }
+
+    for (const mod of system.modules) {
+      for (const iface of mod.interfaces) {
+        for (const method of iface.methods) {
+          for (const effect of method.effects) {
+            const parts = effect.target.split(".");
+            if (parts.length < 2) continue;
+            const fieldName = parts[1];
+            // Try to find the model — check all models for the field
+            // (we can't always resolve the param name to a model here without type info)
+            // Only error if the field name looks like a typo (not found in ANY model)
+            const foundInAnyModel = [...modelFields.values()].some(fields => fields.has(fieldName));
+            if (!foundInAnyModel && !["state", "status", "owner_id"].includes(fieldName)) {
+              issues.push({
+                code: "V006",
+                severity: "warning",
+                message: `Effect target '${effect.target}' in method '${method.name}' — field '${fieldName}' not found in any model`,
+                location: `${mod.id}.${method.name}`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ─── V011: Authenticated methods' modules depend on auth ─────────────────
+  private checkAuthDependencies(system: IR.IRSystem, issues: VerifyIssue[]) {
+    const authModuleIds = new Set(
+      system.modules
+        .filter(m => m.kind === "auth_service" || m.config["auth_method"])
+        .map(m => m.id)
+    );
+
+    for (const mod of system.modules) {
+      const hasAuthenticatedMethod = mod.interfaces.some(i =>
+        i.methods.some(m => m.authenticated)
+      );
+      if (!hasAuthenticatedMethod) continue;
+
+      // Module must either be an auth service itself or depend on one
+      const isAuthService = mod.kind === "auth_service";
+      const dependsOnAuth = mod.dependencies.some(dep => authModuleIds.has(dep));
+      const hasAuthConfig = mod.config["auth_method"] && mod.config["auth_method"] !== "none";
+
+      if (!isAuthService && !dependsOnAuth && !hasAuthConfig && authModuleIds.size > 0) {
+        issues.push({
+          code: "V011",
+          severity: "warning",
+          message: `Module '${mod.name}' has authenticated methods but does not declare an auth dependency`,
+          location: mod.id,
+        });
+      }
+    }
+  }
+
+  // ─── V012: Resolution map is complete ────────────────────────────────────
+  private checkResolutionMap(system: IR.IRSystem, issues: VerifyIssue[]) {
+    // Resolution map must have at least the system-level keys
+    const required = ["system.name", "system.version", "system.domain"];
+    for (const key of required) {
+      if (!system.resolution[key]) {
+        issues.push({
+          code: "V012",
+          severity: "warning",
+          message: `Resolution map missing required key '${key}' — run constraint solver`,
+          location: system.name,
+        });
+      }
+    }
+  }
+
 }
 
 function resolvePath(base: string, relative: string): string {

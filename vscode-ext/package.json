@@ -2,7 +2,7 @@
   "name": "bonescript-vscode",
   "displayName": "BoneScript Language Support",
   "description": "Syntax highlighting, diagnostics, completions, hover, go-to-definition, and outline for BoneScript (.bone) files",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "bonescript",
   "engines": {
     "vscode": "^1.85.0"

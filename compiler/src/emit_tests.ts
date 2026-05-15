@@ -126,6 +126,19 @@ export function emitTestSuite(system: IR.IRSystem): string {
     lines.push(`});`);
     lines.push(``);
 
+    // Update test
+    const updatePayload = createFields.slice(0, 1).reduce((acc, f) => {
+      acc[f.name] = sampleValue(f.type);
+      return acc;
+    }, {} as Record<string, any>);
+    lines.push(`await test("PUT ${tablePath}/:id — updates entity", async () => {`);
+    lines.push(`  if (!__${toSnakeCase(model.name)}_id) { throw new Error("Skipped: no id from create test"); }`);
+    lines.push(`  const { status, data } = await request("PUT", \`${tablePath}/\${__${toSnakeCase(model.name)}_id}\`, ${JSON.stringify(updatePayload)});`);
+    lines.push(`  assert(status === 200, \`Expected 200, got \${status}: \${JSON.stringify(data)}\`);`);
+    lines.push(`  assert(data.id === __${toSnakeCase(model.name)}_id, "ID must match after update");`);
+    lines.push(`});`);
+    lines.push(``);
+
     // Capability tests
     for (const iface of mod.interfaces) {
       for (const method of iface.methods) {
@@ -141,6 +154,18 @@ export function emitTestSuite(system: IR.IRSystem): string {
         lines.push(`});`);
         lines.push(``);
 
+        // Idempotency test
+        if (method.idempotent) {
+          lines.push(`await test("POST ${endpoint} — idempotent (same result on repeat)", async () => {`);
+          lines.push(`  const payload = { ${toSnakeCase(model.name)}_id: __${toSnakeCase(model.name)}_id };`);
+          lines.push(`  const { status: s1, data: d1 } = await request("POST", "${endpoint}", payload);`);
+          lines.push(`  const { status: s2, data: d2 } = await request("POST", "${endpoint}", payload);`);
+          lines.push(`  assert(s1 === s2, \`Idempotency: first call \${s1}, second call \${s2}\`);`);
+          lines.push(`  assert(JSON.stringify(d1) === JSON.stringify(d2), "Idempotency: responses must be identical");`);
+          lines.push(`});`);
+          lines.push(``);
+        }
+
         if (method.preconditions.length > 0) {
           lines.push(`await test("POST ${endpoint} — returns 401 without auth", async () => {`);
           lines.push(`  const res = await fetch(\`\${BASE_URL}${endpoint}\`, { method: "POST" });`);
@@ -154,6 +179,22 @@ export function emitTestSuite(system: IR.IRSystem): string {
     // State machine tests
     for (const sm of mod.state_machines) {
       lines.push(`// State machine: ${sm.entity}`);
+
+      // Valid transition test — transition from initial state to first reachable state
+      const firstTransition = sm.transitions.find(t => t.from === sm.initial);
+      if (firstTransition) {
+        lines.push(`await test("PUT ${tablePath}/:id — valid state transition (${firstTransition.from} → ${firstTransition.to})", async () => {`);
+        lines.push(`  if (!__${toSnakeCase(model.name)}_id) { throw new Error("Skipped: no id from create test"); }`);
+        lines.push(`  const { status, data } = await request("PUT", \`${tablePath}/\${__${toSnakeCase(model.name)}_id}\`, {`);
+        lines.push(`    state: "${firstTransition.to}",`);
+        lines.push(`  });`);
+        lines.push(`  assert(status === 200, \`Expected 200 for valid transition, got \${status}: \${JSON.stringify(data)}\`);`);
+        lines.push(`  assert(data.state === "${firstTransition.to}", \`Expected state '${firstTransition.to}', got '\${data.state}'\`);`);
+        lines.push(`});`);
+        lines.push(``);
+      }
+
+      // Invalid transition test
       lines.push(`await test("PUT ${tablePath}/:id — rejects invalid state transition", async () => {`);
       lines.push(`  const { status, data } = await request("PUT", \`${tablePath}/\${__${toSnakeCase(model.name)}_id}\`, {`);
       lines.push(`    state: "__invalid_state__",`);

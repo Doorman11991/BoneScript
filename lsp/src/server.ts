@@ -184,6 +184,49 @@ const TYPE_ITEMS: CompletionItem[] = [
 connection.onCompletion((params: CompletionParams): CompletionItem[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
+
+  // Expression-context completions: inside requires/effects/emits of a capability
+  // This takes priority over the generic context-based completions below
+  const sym = symbolCache.get(params.textDocument.uri) ?? emptySymbols();
+  const exprCtx = detectCapabilityExprContext(doc, params.position);
+  if (exprCtx.inExpression && exprCtx.capabilityName) {
+    const cap = sym.capabilities.get(exprCtx.capabilityName);
+    const items: CompletionItem[] = [];
+    if (cap) {
+      for (const p of cap.params) {
+        const typeName = p.type.kind === 'PrimitiveType' ? p.type.name
+          : p.type.kind === 'EntityRefType' ? p.type.name : '...';
+        items.push({ label: p.name, kind: CompletionItemKind.Variable, detail: `param: ${typeName}` });
+        const entity = sym.entities.get(p.type.kind === 'EntityRefType' ? p.type.name : '');
+        if (entity) {
+          for (const f of entity.owns) {
+            const ft = f.type.kind === 'PrimitiveType' ? f.type.name : '...';
+            items.push({ label: `${p.name}.${f.name}`, kind: CompletionItemKind.Field, detail: ft });
+          }
+          items.push({ label: `${p.name}.id`, kind: CompletionItemKind.Field, detail: 'uuid' });
+          items.push({ label: `${p.name}.state`, kind: CompletionItemKind.Field, detail: 'string' });
+          items.push({ label: `${p.name}.created_at`, kind: CompletionItemKind.Field, detail: 'timestamp' });
+        }
+      }
+      if (exprCtx.clauseType === 'effects') {
+        items.push({ label: '=', kind: CompletionItemKind.Operator, detail: 'assign' });
+        items.push({ label: '+=', kind: CompletionItemKind.Operator, detail: 'add / set append' });
+        items.push({ label: '-=', kind: CompletionItemKind.Operator, detail: 'subtract / set remove' });
+      }
+      if (exprCtx.clauseType === 'requires') {
+        items.push({ label: '==', kind: CompletionItemKind.Operator, detail: 'equals' });
+        items.push({ label: '!=', kind: CompletionItemKind.Operator, detail: 'not equals' });
+        items.push({ label: '>', kind: CompletionItemKind.Operator, detail: 'greater than' });
+        items.push({ label: '>=', kind: CompletionItemKind.Operator, detail: 'greater than or equal' });
+        items.push({ label: 'now()', kind: CompletionItemKind.Function, detail: 'current timestamp' });
+      }
+      for (const evName of sym.events.keys()) {
+        items.push({ label: evName, kind: CompletionItemKind.Event, detail: 'event' });
+      }
+    }
+    return items;
+  }
+
   const ctx = detectContext(doc, params.position);
   const sym = symbolCache.get(params.textDocument.uri) ?? emptySymbols();
   const line = lineAt(doc, params.position);
@@ -487,82 +530,7 @@ function detectCapabilityExprContext(doc: TextDocument, pos: Position): {
   };
 }
 
-// Patch the onCompletion handler to add expression completions
-// We do this by wrapping — the original handler is stored and called first
-const _originalOnCompletion = (connection as any)._handlers?.['textDocument/completion'];
 
-connection.onCompletion((params: CompletionParams): CompletionItem[] => {
-  const doc = documents.get(params.textDocument.uri);
-  if (!doc) return [];
-
-  const sym = symbolCache.get(params.textDocument.uri) ?? emptySymbols();
-
-  // Check if we're inside a capability expression clause
-  const exprCtx = detectCapabilityExprContext(doc, params.position);
-  if (exprCtx.inExpression && exprCtx.capabilityName) {
-    const cap = sym.capabilities.get(exprCtx.capabilityName);
-    const items: CompletionItem[] = [];
-
-    if (cap) {
-      // Suggest capability parameters
-      for (const p of cap.params) {
-        const typeName = p.type.kind === 'PrimitiveType' ? p.type.name
-          : p.type.kind === 'EntityRefType' ? p.type.name : '...';
-        items.push({
-          label: p.name,
-          kind: CompletionItemKind.Variable,
-          detail: `param: ${typeName}`,
-          documentation: { kind: MarkupKind.Markdown, value: `Capability parameter \`${p.name}: ${typeName}\`` },
-        });
-
-        // If param is an entity, also suggest its fields as dotted paths
-        const entity = sym.entities.get(p.type.kind === 'EntityRefType' ? p.type.name : '');
-        if (entity) {
-          for (const f of entity.owns) {
-            const ft = f.type.kind === 'PrimitiveType' ? f.type.name : '...';
-            items.push({
-              label: `${p.name}.${f.name}`,
-              kind: CompletionItemKind.Field,
-              detail: ft,
-              documentation: { kind: MarkupKind.Markdown, value: `Field \`${f.name}: ${ft}\` of \`${p.type.kind === 'EntityRefType' ? p.type.name : ''}\`` },
-            });
-          }
-          // Auto-fields
-          items.push({ label: `${p.name}.id`, kind: CompletionItemKind.Field, detail: 'uuid' });
-          items.push({ label: `${p.name}.state`, kind: CompletionItemKind.Field, detail: 'string' });
-          items.push({ label: `${p.name}.created_at`, kind: CompletionItemKind.Field, detail: 'timestamp' });
-        }
-      }
-
-      // For effects: suggest assignment operators
-      if (exprCtx.clauseType === 'effects') {
-        items.push({ label: '=', kind: CompletionItemKind.Operator, detail: 'assign' });
-        items.push({ label: '+=', kind: CompletionItemKind.Operator, detail: 'add / set append' });
-        items.push({ label: '-=', kind: CompletionItemKind.Operator, detail: 'subtract / set remove' });
-      }
-
-      // For requires: suggest comparison operators and common patterns
-      if (exprCtx.clauseType === 'requires') {
-        items.push({ label: '==', kind: CompletionItemKind.Operator, detail: 'equals' });
-        items.push({ label: '!=', kind: CompletionItemKind.Operator, detail: 'not equals' });
-        items.push({ label: '>', kind: CompletionItemKind.Operator, detail: 'greater than' });
-        items.push({ label: '>=', kind: CompletionItemKind.Operator, detail: 'greater than or equal' });
-        items.push({ label: 'now()', kind: CompletionItemKind.Function, detail: 'current timestamp' });
-      }
-
-      // For emits: suggest declared events
-      for (const evName of sym.events.keys()) {
-        items.push({ label: evName, kind: CompletionItemKind.Event, detail: 'event' });
-      }
-    }
-
-    return items;
-  }
-
-  // Fall through to context-based completions (already registered above)
-  // Return empty here — the original handler runs via the switch statement
-  return [];
-});
 
 // ─── Feature 2: Code Actions ──────────────────────────────────────────────────
 // Provides quick fixes for common type errors.
