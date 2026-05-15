@@ -19,7 +19,13 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "start": "ts-node src/cli.ts",
-    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts"
+    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts",
+    "test:jest": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx jest --runInBand",
+    "test:jest:unit": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx jest --runInBand --testPathPatterns lexer parser typechecker",
+    "test:jest:integration": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx jest --runInBand --testPathPatterns emitter integration",
+    "test:jest:watch": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx jest --runInBand --watch",
+    "test:jest:coverage": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx jest --runInBand --coverage",
+    "test:all": "npm test && npm run test:jest:unit && npm run test:jest:integration"
   },
   "keywords": [
     "bonescript",
@@ -45,8 +51,12 @@
     "url": "https://github.com/Doorman11991/BoneScript/issues"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "18.19.0",
-    "typescript": "5.3.3",
-    "ts-node": "10.9.2"
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.9",
+    "ts-node": "10.9.2",
+    "typescript": "5.3.3"
   }
 }
