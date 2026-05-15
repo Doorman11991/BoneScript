@@ -23,6 +23,9 @@ const emit_postman_1 = require("./emit_postman");
 const emit_seed_1 = require("./emit_seed");
 const emit_audit_1 = require("./emit_audit");
 const emit_admin_1 = require("./emit_admin");
+const emit_notify_1 = require("./emit_notify");
+const emit_cron_1 = require("./emit_cron");
+const emit_graphql_1 = require("./emit_graphql");
 function toSnakeCase(s) {
     return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
@@ -30,7 +33,7 @@ class FullEmitter {
     constructor() {
         this.schemaEmitter = new emitter_1.Emitter();
     }
-    emit(system) {
+    emit(system, options = {}) {
         const files = [];
         // 1. Package files
         files.push({ path: "package.json", content: (0, emit_runtime_1.emitPackageJson)(system), language: "json", source_module: "root" });
@@ -156,18 +159,32 @@ class FullEmitter {
         // 9. README
         files.push({ path: "README.md", content: this.emitReadme(system), language: "yaml", source_module: "root" });
         // 12. OpenAPI spec
-        files.push({ path: "openapi.yaml", content: (0, emit_openapi_1.emitOpenApiSpec)(system), language: "yaml", source_module: "docs" });
+        if (!options.noOpenApi) {
+            files.push({ path: "openapi.yaml", content: (0, emit_openapi_1.emitOpenApiSpec)(system), language: "yaml", source_module: "docs" });
+            // GraphQL schema (alongside openapi)
+            files.push({ path: "schema.graphql", content: (0, emit_graphql_1.emitGraphQLSchema)(system), language: "yaml", source_module: "docs" });
+        }
         // 13. TypeScript SDK
-        files.push({ path: "sdk/client.ts", content: (0, emit_sdk_1.emitTypescriptSdk)(system), language: "typescript", source_module: "sdk" });
+        if (!options.noSdk) {
+            files.push({ path: "sdk/client.ts", content: (0, emit_sdk_1.emitTypescriptSdk)(system), language: "typescript", source_module: "sdk" });
+        }
         // 14. Zod schemas
         files.push({ path: "src/schemas.ts", content: (0, emit_zod_1.emitZodSchemas)(system), language: "typescript", source_module: "validation" });
         // 15. Postman collection
-        files.push({ path: `${system.name}.postman_collection.json`, content: (0, emit_postman_1.emitPostmanCollection)(system), language: "json", source_module: "docs" });
+        if (!options.noOpenApi) {
+            files.push({ path: `${system.name}.postman_collection.json`, content: (0, emit_postman_1.emitPostmanCollection)(system), language: "json", source_module: "docs" });
+        }
         // 16. Seed file
-        files.push({ path: "src/seed.ts", content: (0, emit_seed_1.emitSeedFile)(system), language: "typescript", source_module: "dev" });
+        if (!options.noSeed) {
+            files.push({ path: "src/seed.ts", content: (0, emit_seed_1.emitSeedFile)(system), language: "typescript", source_module: "dev" });
+        }
         // 17. Audit log
         files.push({ path: "migrations/audit_log.sql", content: (0, emit_audit_1.emitAuditSchema)(), language: "sql", source_module: "infra" });
         files.push({ path: "src/audit.ts", content: (0, emit_audit_1.emitAuditMiddleware)(system), language: "typescript", source_module: "infra" });
+        // 18. Notification service
+        files.push({ path: "src/notify.ts", content: (0, emit_notify_1.emitNotifyService)(system), language: "typescript", source_module: "infra" });
+        // 19. Cron jobs
+        files.push({ path: "src/cron.ts", content: (0, emit_cron_1.emitCronJobs)(system), language: "typescript", source_module: "infra" });
         // 18. Admin panel
         files.push({ path: "admin/index.html", content: (0, emit_admin_1.emitAdminPanel)(system), language: "yaml", source_module: "admin" });
         // 10. Source map + debug handler
@@ -212,6 +229,12 @@ EVENT_WORKER_INTERVAL_MS=1000
 
 # --- Request timeout ---
 REQUEST_TIMEOUT_MS=30000
+
+# --- Notifications ---
+# NOTIFY_PROVIDER=log|resend|sendgrid (default: log)
+NOTIFY_PROVIDER=log
+NOTIFY_API_KEY=
+NOTIFY_FROM_EMAIL=noreply@example.com
 `;
     }
     emitDockerCompose(system) {

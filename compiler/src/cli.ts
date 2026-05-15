@@ -75,7 +75,7 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.5.6");
+  console.log("BoneScript compiler v0.5.8");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
@@ -392,7 +392,7 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
     const emitter = new FullEmitter();
     const allFiles: ReturnType<typeof emitter.emit> = [];
     for (const sys of irSystems) {
-      const files = emitter.emit(sys);
+      const files = emitter.emit(sys, { noSdk: _noSdk, noOpenApi: _noOpenApi, noSeed: _noSeed });
       allFiles.push(...files);
     }
     console.log(`  [6/7] Code emit: ${allFiles.length} files generated`);

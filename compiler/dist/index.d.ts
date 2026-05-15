@@ -36,6 +36,9 @@ export { emitPostmanCollection } from "./emit_postman";
 export { emitSeedFile } from "./emit_seed";
 export { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
 export { emitAdminPanel } from "./emit_admin";
+export { emitNotifyService } from "./emit_notify";
+export { emitCronJobs } from "./emit_cron";
+export { emitGraphQLSchema } from "./emit_graphql";
 /**
  * Convenience function: compile a .bone source string to files.
  */

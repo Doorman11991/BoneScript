@@ -70,7 +70,7 @@ function emitAdminPanel(system) {
     }).join("\n      ");
     // The embedded JS uses only regular strings (no backticks) to avoid escaping issues
     const embeddedJs = [
-        'const BASE_URL = "http://localhost:3000";',
+        'const BASE_URL = (document.querySelector(\'meta[name="bonescript-api-url"]\') || {}).content || "http://localhost:3000";',
         'const ENTITIES = ' + configJson + ';',
         'let currentEntity = null, currentPage = 1, editingId = null, pendingCapability = null;',
         'let authToken = localStorage.getItem("admin_token") || "";',
@@ -98,6 +98,7 @@ function emitAdminPanel(system) {
         '<head>',
         '<meta charset="UTF-8" />',
         '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+        '<meta name="bonescript-api-url" content="http://localhost:3000" />',
         '<title>' + system.name + ' Admin</title>',
         '<script src="https://cdn.tailwindcss.com"><\/script>',
         '<style>.loading{opacity:.5;pointer-events:none}.toast{animation:fadeout 3s forwards}@keyframes fadeout{0%,70%{opacity:1}100%{opacity:0}}<\/style>',

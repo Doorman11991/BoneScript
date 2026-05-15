@@ -25,10 +25,15 @@ system Shop {
     delivery: exactly_once
     ttl: 90d
   }
+
+  policy api_security {
+    rate_limit: 100 per 1m
+    audit: true
+  }
 }
 ```
 
-Run `bonec compile shop.bone` and get back a running Express API with PostgreSQL, JWT auth, state machine enforcement, transactional SQL, durable events, health checks, migrations, WebSocket support, a Dockerfile, and a GitHub Actions CI pipeline. No LLMs. Deterministic — same input always produces identical output.
+Run `bonec compile shop.bone` and get back a complete project: Express API, PostgreSQL migrations, JWT auth, state machine enforcement, transactional SQL, durable events, health checks, WebSocket support, OpenAPI spec, TypeScript SDK, Zod schemas, Postman collection, GraphQL schema, seed file, audit log, cron stubs, notification service, admin panel, Dockerfile, and GitHub Actions CI. No LLMs. Deterministic — same input always produces identical output.
 
 ---
 
@@ -59,7 +64,7 @@ bonec compile my-app/my-app.bone
 
 # 3. Configure
 cp my-app/output/.env.example my-app/output/.env
-# Edit .env — set JWT_SECRET to a random 48-byte hex string:
+# Edit .env — set JWT_SECRET:
 # node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 # 4. Run
@@ -69,50 +74,70 @@ docker compose up -d   # starts Postgres + Redis
 npm run migrate
 npm run dev
 # → http://localhost:3000
+# → http://localhost:3000/admin  (admin panel)
 ```
 
-## VS Code Extension
+### Nakama target (game backends)
 
 ```bash
-# Build and install in one step
-.\install-extension.ps1
+bonec compile game.bone --target nakama
+cd output-nakama && npm install && npm run build
+# Copy build/ to your Nakama runtime path
 ```
-
-Open any `.bone` file and get:
-- Real-time error highlighting (lex + parse + type check as you type)
-- Context-aware completions — different suggestions inside `entity`, `capability`, `channel`, etc.
-- Hover docs for every keyword and all your declared entities, capabilities, and events
-- Go-to-definition for entity/capability/event references
-- Document outline (Ctrl+Shift+O)
-- Signature help when typing capability calls
-- Quick fixes for common errors
 
 ---
 
 ## What Gets Generated
 
-From a single `.bone` file, the compiler produces a complete Node.js project:
+From a single `.bone` file, `bonec compile` produces a complete project:
 
 ```
 output/
 ├── src/
-│   ├── index.ts          Express server with all routes wired
-│   ├── db.ts             Postgres connection pool
-│   ├── events.ts         Durable event bus (transactional outbox)
-│   ├── auth.ts           JWT middleware
-│   ├── health.ts         /health/live, /health/ready, /health/metrics
-│   ├── logger.ts         Structured logging (spec/10 schema)
-│   ├── metrics.ts        Prometheus-style counters/histograms
-│   ├── failure_rules.ts  Rule-based remediation (no ML)
-│   ├── flows.ts          Saga runtime with backward compensation
-│   ├── websocket.ts      WebSocket server (if channels declared)
-│   ├── routes/           One file per entity — CRUD + capabilities
-│   └── state_machines/   One file per entity with states
-├── migrations/           SQL schemas with indexes, triggers, FK constraints
+│   ├── index.ts            Express server, all routes wired
+│   ├── db.ts               Postgres connection pool
+│   ├── events.ts           Durable event bus (transactional outbox)
+│   ├── auth.ts             JWT middleware
+│   ├── audit.ts            Audit log middleware + query helper
+│   ├── notify.ts           Email notification service (Resend/SendGrid/log)
+│   ├── cron.ts             Scheduled job stubs (node-cron)
+│   ├── schemas.ts          Zod v3 validation schemas
+│   ├── health.ts           /health/live, /health/ready, /health/metrics
+│   ├── logger.ts           Structured logging
+│   ├── metrics.ts          Prometheus-style counters/histograms
+│   ├── failure_rules.ts    Rule-based remediation
+│   ├── flows.ts            Saga runtime with compensation
+│   ├── websocket.ts        WebSocket server (if channels declared)
+│   ├── seed.ts             Database seed script
+│   ├── routes/             One file per entity — CRUD + capabilities
+│   └── state_machines/     One file per entity with states
+├── sdk/
+│   └── client.ts           Typed TypeScript fetch client
+├── admin/
+│   └── index.html          Self-contained admin panel (no build step)
+├── migrations/             SQL schemas, indexes, triggers, FK constraints
+│   ├── audit_log.sql       Audit log table
+│   └── event_outbox.sql    Durable event outbox
+├── openapi.yaml            OpenAPI 3.0.3 spec
+├── schema.graphql          GraphQL schema
+├── {Name}.postman_collection.json
 ├── Dockerfile
-├── docker-compose.yaml   Postgres + Redis for local dev
-├── .github/workflows/    CI/CD pipeline
-└── src/tests.ts          Generated regression tests
+├── docker-compose.yaml     Postgres + Redis for local dev
+├── .github/workflows/      CI/CD pipeline
+└── src/tests.ts            Generated regression tests
+```
+
+### Compile flags
+
+```bash
+bonec compile <file> [options]
+
+--target express     Express/PostgreSQL output (default)
+--target nakama      Nakama TypeScript runtime output
+
+--no-sdk             Skip sdk/client.ts generation
+--no-openapi         Skip openapi.yaml, schema.graphql, Postman collection
+--no-seed            Skip src/seed.ts generation
 ```
 
 ---
@@ -126,7 +151,9 @@ entity Order {
   owns: [buyer_id: uuid, total: uint, status: string]
   constraints: [total > 0, status in ["pending", "paid", "shipped"]]
   states: pending -> paid -> shipped -> delivered | cancelled
+  auth: jwt
   relation buyer: belongs_to User
+  index: [buyer_id, status]
 }
 ```
 
@@ -139,6 +166,7 @@ capability ship_order(seller: Seller, order: Order) {
   emits: OrderShipped
   sync: transactional
   timeout: 10s
+  retry: { max_attempts: 3, backoff: exponential, interval: 1s }
 }
 ```
 
@@ -160,6 +188,17 @@ channel game_lobby {
   ordering: causal
   participants: set<Player>
   persistence: last_100
+}
+```
+
+**Policies** — rate limiting and audit logging, wired automatically into routes
+
+```bone
+policy api_security {
+  rate_limit: 100 per 1m
+  access: [user, admin]
+  audit: true
+  encryption: both
 }
 ```
 
@@ -202,6 +241,7 @@ extension_point calculate_fee(order: Order) {
 | Command | Description |
 |---------|-------------|
 | `bonec compile <file>` | Full 7-stage compilation → runnable project |
+| `bonec compile <file> --target nakama` | Compile to Nakama TypeScript runtime |
 | `bonec check <file>` | Validate without generating code |
 | `bonec fmt <file>` | Format in place |
 | `bonec watch <file>` | Recompile on save |
@@ -217,7 +257,7 @@ extension_point calculate_fee(order: Order) {
 
 | Domain | Auth | DB | Sync |
 |--------|------|----|------|
-| `multiplayer_game` | JWT | Postgres + Redis | realtime |
+| `multiplayer_game` | JWT | Postgres + Redis | realtime / nakama |
 | `saas_platform` | OAuth2 | Postgres | eventual |
 | `iot_system` | API key | DynamoDB | eventual |
 | `social_network` | OAuth2 | Postgres + Redis | eventual |
@@ -226,21 +266,56 @@ extension_point calculate_fee(order: Order) {
 
 ---
 
-## Algorithm Catalog
+## Generated Output Details
 
-Built-in algorithms available via `algorithm:` in any capability:
+### Admin Panel (`admin/index.html`)
 
-| Name | Category | Complexity |
-|------|----------|------------|
-| `shortest_path` | graph | O((V+E) log V) |
-| `topological_sort` | graph | O(V+E) |
-| `binary_search` | search | O(log n) |
-| `bipartite_matching` | matching | O(E√V) |
-| `round_robin` | scheduling | O(n) |
-| `weighted_average` | stats | O(n) |
-| `percentile` | stats | O(n log n) |
-| `rank_by` | sort | O(n log n) |
-| `consistent_hash` | crypto | O(N log N) build |
+A self-contained admin UI — no build step, no dependencies beyond a Tailwind CDN link. Open it directly in a browser pointed at your running API. Features:
+
+- Sidebar navigation per entity
+- Paginated data table with type-aware column rendering
+- Create/Edit modal with auto-generated form fields
+- Delete with confirmation
+- Capability buttons that POST to capability endpoints
+- Bearer token auth stored in localStorage
+- API URL configurable via `<meta name="bonescript-api-url">` tag
+
+### TypeScript SDK (`sdk/client.ts`)
+
+A typed fetch client for your frontend. Zero dependencies.
+
+```typescript
+import { ShopClient } from "./sdk/client";
+
+const client = new ShopClient("http://localhost:3000", () => localStorage.getItem("token"));
+
+const products = await client.listProduct();
+const product = await client.createProduct({ name: "Widget", price: 999, stock: 100 });
+await client.purchase({ product_id: product.id, qty: 1 });
+```
+
+### Zod Schemas (`src/schemas.ts`)
+
+Runtime validation schemas for all models and capability inputs, with constraint mapping.
+
+```typescript
+import { ProductSchema, ShopServicePurchaseInputSchema } from "./schemas";
+
+const validated = ProductSchema.parse(req.body);
+const input = ShopServicePurchaseInputSchema.parse(req.body);
+```
+
+### Notification Service (`src/notify.ts`)
+
+Pluggable email notifications on event emissions. Set `NOTIFY_PROVIDER=resend` or `sendgrid` in `.env` and implement recipient lookup.
+
+### Cron Jobs (`src/cron.ts`)
+
+Commented-out `node-cron` stubs for each `sync: batch` capability. Uncomment and configure schedules as needed.
+
+### Audit Log (`migrations/audit_log.sql` + `src/audit.ts`)
+
+Automatically applied to routes on modules with `audit: true` in their policy. Records actor, action, entity type/id, payload, IP, and user agent.
 
 ---
 
@@ -259,6 +334,22 @@ In durable mode:
 
 ---
 
+## Algorithm Catalog
+
+| Name | Category | Complexity |
+|------|----------|------------|
+| `shortest_path` | graph | O((V+E) log V) |
+| `topological_sort` | graph | O(V+E) |
+| `binary_search` | search | O(log n) |
+| `bipartite_matching` | matching | O(E√V) |
+| `round_robin` | scheduling | O(n) |
+| `weighted_average` | stats | O(n) |
+| `percentile` | stats | O(n log n) |
+| `rank_by` | sort | O(n log n) |
+| `consistent_hash` | crypto | O(N log N) build |
+
+---
+
 ## Compilation Pipeline
 
 Every stage is deterministic — same `.bone` file always produces bitwise-identical output.
@@ -271,9 +362,19 @@ Every stage is deterministic — same `.bone` file always produces bitwise-ident
     ↓ Lower        Architecture IR
     ↓ Optimize     dead module elimination, deduplication
     ↓ Solve        constraint propagation → concrete decisions
-    ↓ Emit         TypeScript + SQL + YAML + JSON
+    ↓ Emit         TypeScript + SQL + YAML + JSON + HTML
     ↓ Verify       IR consistency + generated code checks
 ```
+
+---
+
+## VS Code Extension
+
+```bash
+.\install-extension.ps1
+```
+
+Open any `.bone` file and get real-time error highlighting, context-aware completions, hover docs, go-to-definition, document outline, signature help, and quick fixes.
 
 ---
 
@@ -286,31 +387,24 @@ npm test
 
 ---
 
-## Contributing
-
-Issues and PRs welcome at [github.com/dantheman181/bonescript](https://github.com/dantheman181/bonescript).
-
----
-
 ## Project Structure
 
 ```
 spec/           Language specification (10 formal documents)
-compiler/       Reference compiler (TypeScript) — published as bonescript-compiler on npm
-  src/          Source — lexer, parser, type checker, IR, emitters, CLI
+compiler/       Reference compiler (TypeScript) — bonescript-compiler on npm
+  src/          Lexer, parser, type checker, IR, 15+ emitters, CLI
   dist/         Compiled output
 lsp/            Language Server Protocol server
 vscode-ext/     VS Code extension
 examples/       Example .bone programs
-  inventory_platform.bone   Multiplayer inventory system
-  delivery_platform.bone    Delivery routing with algorithms
-  marketplace/shop.bone     Full marketplace with flows and relations
 ```
 
 ---
 
 ## Status
 
-Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler). The compiler pipeline is complete and deterministic. The generated code compiles and runs. The VS Code extension provides real-time feedback. Tested against a real marketplace application.
+Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.5.8.
 
-Not yet: VS Code marketplace listing for the extension, end-to-end tests with a live database.
+The compiler pipeline is complete and deterministic. All generated code compiles and runs. The VS Code extension provides real-time feedback.
+
+Not yet: VS Code marketplace listing, end-to-end tests with a live database.

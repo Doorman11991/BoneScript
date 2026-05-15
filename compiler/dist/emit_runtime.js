@@ -54,6 +54,7 @@ function emitPackageJson(system) {
             "express-rate-limit": "7.1.5",
             jsonwebtoken: "9.0.2",
             dotenv: "16.3.1",
+            "node-cron": "3.0.3",
         },
         devDependencies: {
             "@types/express": "4.17.21",
@@ -63,6 +64,7 @@ function emitPackageJson(system) {
             "@types/cors": "2.8.17",
             "@types/jsonwebtoken": "9.0.5",
             "@types/uuid": "9.0.7",
+            "@types/node-cron": "3.0.11",
             typescript: "5.3.3",
             "ts-node": "10.9.2",
         },
@@ -547,6 +549,7 @@ function emitIndex(system) {
     const hasBatch = system.modules.some(m => m.interfaces.some(i => i.methods.some(mth => mth.sync === "batch")));
     if (hasBatch) {
         lines.push(`import { startBatchWorker } from "./batch";`);
+        lines.push(`import { startCronJobs } from "./cron";`);
     }
     if (hasWebSocket) {
         lines.push(`import { setupWebSocketServer } from "./websocket";`);
@@ -619,6 +622,8 @@ function emitIndex(system) {
     if (hasBatch) {
         lines.push(`  // Start batch executor`);
         lines.push(`  startBatchWorker();`);
+        lines.push(`  // Start cron jobs`);
+        lines.push(`  startCronJobs();`);
     }
     lines.push(`  console.log(\`[${system.name}] Running on port \${PORT}\`);`);
     lines.push(`  console.log(\`  HTTP routes:\`);`);

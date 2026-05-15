@@ -15,7 +15,9 @@ export type ScaffoldDomain =
   | "realtime_collaboration";
 
 const TEMPLATES: Record<ScaffoldDomain, string> = {
-  multiplayer_game: `system MyGame {
+  multiplayer_game: `// Compile with: bonec compile {name}.bone --target nakama
+// for Nakama TypeScript runtime output instead of Express/PostgreSQL
+system MyGame {
   domain: multiplayer_game
 
   entity Player {

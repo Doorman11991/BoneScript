@@ -63,8 +63,8 @@ export function emitAuditMiddleware(system: IR.IRSystem): string {
     `  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {`
   );
   lines.push(`    try {`);
-  lines.push(`      const auth = (req as any).auth as { id?: string } | undefined;`);
-  lines.push(`      const actorId = auth?.id ?? null;`);
+  lines.push(`      const auth = (req as any).auth as { actor_id?: string | null } | undefined;`);
+  lines.push(`      const actorId = auth?.actor_id ?? null;`);
   lines.push(
     `      const entityId = req.params.id ?? (req.body as Record<string, unknown>)?.id ?? null;`
   );

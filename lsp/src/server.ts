@@ -378,6 +378,11 @@ connection.onHover((params: TextDocumentPositionParams): Hover | null => {
     return { contents: { kind: MarkupKind.Markdown, value: `**store ${word}**\n\n**engine:** ${store.engine || 'postgresql'}\n\n**fields:** ${store.schema.length}` } };
   }
 
+  const channel = sym.channels.get(word);
+  if (channel) {
+    return { contents: { kind: MarkupKind.Markdown, value: `**channel ${word}**\n\n**transport:** ${(channel as any).transport || 'websocket'}\n\n**ordering:** ${(channel as any).ordering || 'fifo'}\n\n**persistence:** ${(channel as any).persistence || 'none'}` } };
+  }
+
   return null;
 });
 

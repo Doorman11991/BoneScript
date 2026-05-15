@@ -39,15 +39,24 @@ import { emitPostmanCollection } from "./emit_postman";
 import { emitSeedFile } from "./emit_seed";
 import { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
 import { emitAdminPanel } from "./emit_admin";
+import { emitNotifyService } from "./emit_notify";
+import { emitCronJobs } from "./emit_cron";
+import { emitGraphQLSchema } from "./emit_graphql";
 
 function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
+export interface FullEmitterOptions {
+  noSdk?: boolean;
+  noOpenApi?: boolean;
+  noSeed?: boolean;
+}
+
 export class FullEmitter {
   private schemaEmitter = new Emitter();
 
-  emit(system: IR.IRSystem): EmittedFile[] {
+  emit(system: IR.IRSystem, options: FullEmitterOptions = {}): EmittedFile[] {
     const files: EmittedFile[] = [];
 
     // 1. Package files
@@ -188,23 +197,39 @@ export class FullEmitter {
     files.push({ path: "README.md", content: this.emitReadme(system), language: "yaml", source_module: "root" });
 
     // 12. OpenAPI spec
-    files.push({ path: "openapi.yaml", content: emitOpenApiSpec(system), language: "yaml", source_module: "docs" });
+    if (!options.noOpenApi) {
+      files.push({ path: "openapi.yaml", content: emitOpenApiSpec(system), language: "yaml", source_module: "docs" });
+      // GraphQL schema (alongside openapi)
+      files.push({ path: "schema.graphql", content: emitGraphQLSchema(system), language: "yaml", source_module: "docs" });
+    }
 
     // 13. TypeScript SDK
-    files.push({ path: "sdk/client.ts", content: emitTypescriptSdk(system), language: "typescript", source_module: "sdk" });
+    if (!options.noSdk) {
+      files.push({ path: "sdk/client.ts", content: emitTypescriptSdk(system), language: "typescript", source_module: "sdk" });
+    }
 
     // 14. Zod schemas
     files.push({ path: "src/schemas.ts", content: emitZodSchemas(system), language: "typescript", source_module: "validation" });
 
     // 15. Postman collection
-    files.push({ path: `${system.name}.postman_collection.json`, content: emitPostmanCollection(system), language: "json", source_module: "docs" });
+    if (!options.noOpenApi) {
+      files.push({ path: `${system.name}.postman_collection.json`, content: emitPostmanCollection(system), language: "json", source_module: "docs" });
+    }
 
     // 16. Seed file
-    files.push({ path: "src/seed.ts", content: emitSeedFile(system), language: "typescript", source_module: "dev" });
+    if (!options.noSeed) {
+      files.push({ path: "src/seed.ts", content: emitSeedFile(system), language: "typescript", source_module: "dev" });
+    }
 
     // 17. Audit log
     files.push({ path: "migrations/audit_log.sql", content: emitAuditSchema(), language: "sql", source_module: "infra" });
     files.push({ path: "src/audit.ts", content: emitAuditMiddleware(system), language: "typescript", source_module: "infra" });
+
+    // 18. Notification service
+    files.push({ path: "src/notify.ts", content: emitNotifyService(system), language: "typescript", source_module: "infra" });
+
+    // 19. Cron jobs
+    files.push({ path: "src/cron.ts", content: emitCronJobs(system), language: "typescript", source_module: "infra" });
 
     // 18. Admin panel
     files.push({ path: "admin/index.html", content: emitAdminPanel(system), language: "yaml", source_module: "admin" });
@@ -254,6 +279,12 @@ EVENT_WORKER_INTERVAL_MS=1000
 
 # --- Request timeout ---
 REQUEST_TIMEOUT_MS=30000
+
+# --- Notifications ---
+# NOTIFY_PROVIDER=log|resend|sendgrid (default: log)
+NOTIFY_PROVIDER=log
+NOTIFY_API_KEY=
+NOTIFY_FROM_EMAIL=noreply@example.com
 `;
   }
 
