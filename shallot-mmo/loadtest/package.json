@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "ws": "8.16.0"
+    "ws": "8.17.1"
   }
 }
