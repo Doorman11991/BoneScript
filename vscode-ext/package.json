@@ -2,7 +2,7 @@
   "name": "bonescript-vscode",
   "displayName": "BoneScript Language Support",
   "description": "Syntax highlighting, diagnostics, completions, hover, go-to-definition, and outline for BoneScript (.bone) files",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "bonescript",
   "engines": {
     "vscode": "^1.85.0"
@@ -40,6 +40,21 @@
         "command": "bone.fmt",
         "title": "BoneScript: Format File",
         "icon": "$(symbol-color)"
+      },
+      {
+        "command": "bone.watch",
+        "title": "BoneScript: Watch (recompile on save)",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "bone.diff",
+        "title": "BoneScript: Diff Two Files",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "bone.ir",
+        "title": "BoneScript: Show IR (JSON)",
+        "icon": "$(json)"
       },
       {
         "command": "bone.init",
@@ -80,6 +95,16 @@
           "command": "bone.fmt",
           "when": "resourceExtname == .bone",
           "group": "bone"
+        },
+        {
+          "command": "bone.watch",
+          "when": "resourceExtname == .bone",
+          "group": "bone"
+        },
+        {
+          "command": "bone.ir",
+          "when": "resourceExtname == .bone",
+          "group": "bone"
         }
       ]
     },
@@ -107,8 +132,8 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "package": "npx vsce package --no-dependencies",
-    "install-ext": "code --install-extension bonescript-vscode-0.2.0.vsix"
+    "package": "npx vsce package --no-dependencies --allow-missing-repository",
+    "install-ext": "code --install-extension bonescript-vscode-0.4.0.vsix"
   },
   "dependencies": {
     "vscode-languageclient": "9.0.1"

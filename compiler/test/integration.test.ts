@@ -361,34 +361,102 @@ describe("Integration — verifier", () => {
   });
 });
 
-// ─── Scenario 8: Real example file ───────────────────────────────────────────
+// ─── Scenario 8: Real example files ──────────────────────────────────────────
 
 import * as fs from "fs";
 import * as path from "path";
 
 describe("Integration — example files", () => {
-  const examplePath = path.resolve(__dirname, "../../examples/inventory_platform.bone");
+  const inventoryPath = path.resolve(__dirname, "../../examples/inventory_platform.bone");
+  const deliveryPath  = path.resolve(__dirname, "../../examples/delivery_platform.bone");
+  const shopPath      = path.resolve(__dirname, "../../examples/marketplace/shop.bone");
 
   test("inventory_platform.bone compiles without type errors", () => {
-    if (!fs.existsSync(examplePath)) {
-      console.warn("Skipping: example file not found at", examplePath);
+    if (!fs.existsSync(inventoryPath)) {
+      console.warn("Skipping: example file not found at", inventoryPath);
       return;
     }
-    const source = fs.readFileSync(examplePath, "utf-8");
+    const source = fs.readFileSync(inventoryPath, "utf-8");
     const result = runPipeline(source);
     expect(result.typeErrors).toHaveLength(0);
   });
 
   test("inventory_platform.bone produces files", () => {
-    if (!fs.existsSync(examplePath)) return;
-    const source = fs.readFileSync(examplePath, "utf-8");
+    if (!fs.existsSync(inventoryPath)) return;
+    const source = fs.readFileSync(inventoryPath, "utf-8");
     const result = runPipeline(source);
     expect(result.fileCount).toBeGreaterThan(0);
   });
 
   test("inventory_platform.bone is deterministic", () => {
-    if (!fs.existsSync(examplePath)) return;
-    const source = fs.readFileSync(examplePath, "utf-8");
+    if (!fs.existsSync(inventoryPath)) return;
+    const source = fs.readFileSync(inventoryPath, "utf-8");
+    const r1 = runPipeline(source);
+    const r2 = runPipeline(source);
+    const normalize = (files: EmittedFile[]) =>
+      files.map(f => f.path + ":" + f.content.length).sort().join("|");
+    expect(normalize(r1.files)).toBe(normalize(r2.files));
+  });
+
+  test("delivery_platform.bone compiles without type errors", () => {
+    if (!fs.existsSync(deliveryPath)) {
+      console.warn("Skipping: example file not found at", deliveryPath);
+      return;
+    }
+    const source = fs.readFileSync(deliveryPath, "utf-8");
+    const result = runPipeline(source);
+    expect(result.typeErrors).toHaveLength(0);
+  });
+
+  test("delivery_platform.bone produces files including algorithm implementations", () => {
+    if (!fs.existsSync(deliveryPath)) return;
+    const source = fs.readFileSync(deliveryPath, "utf-8");
+    const result = runPipeline(source);
+    expect(result.fileCount).toBeGreaterThan(0);
+    // Should emit algorithms.ts since the file uses shortest_path, bipartite_matching, etc.
+    const algoFile = result.files.find(f => f.path === "src/algorithms.ts");
+    expect(algoFile).toBeDefined();
+    expect(algoFile!.content).toContain("shortest_path");
+  });
+
+  test("delivery_platform.bone is deterministic", () => {
+    if (!fs.existsSync(deliveryPath)) return;
+    const source = fs.readFileSync(deliveryPath, "utf-8");
+    const r1 = runPipeline(source);
+    const r2 = runPipeline(source);
+    const normalize = (files: EmittedFile[]) =>
+      files.map(f => f.path + ":" + f.content.length).sort().join("|");
+    expect(normalize(r1.files)).toBe(normalize(r2.files));
+  });
+
+  test("delivery_platform.bone verification passes", () => {
+    if (!fs.existsSync(deliveryPath)) return;
+    const source = fs.readFileSync(deliveryPath, "utf-8");
+    const result = runPipeline(source);
+    const errors = result.verifyResult.issues.filter(i => i.severity === "error");
+    expect(errors).toHaveLength(0);
+  });
+
+  test("marketplace/shop.bone compiles without type errors", () => {
+    if (!fs.existsSync(shopPath)) {
+      console.warn("Skipping: example file not found at", shopPath);
+      return;
+    }
+    const source = fs.readFileSync(shopPath, "utf-8");
+    const result = runPipeline(source);
+    expect(result.typeErrors).toHaveLength(0);
+  });
+
+  test("marketplace/shop.bone produces files", () => {
+    if (!fs.existsSync(shopPath)) return;
+    const source = fs.readFileSync(shopPath, "utf-8");
+    const result = runPipeline(source);
+    expect(result.fileCount).toBeGreaterThan(0);
+  });
+
+  test("marketplace/shop.bone is deterministic", () => {
+    if (!fs.existsSync(shopPath)) return;
+    const source = fs.readFileSync(shopPath, "utf-8");
     const r1 = runPipeline(source);
     const r2 = runPipeline(source);
     const normalize = (files: EmittedFile[]) =>

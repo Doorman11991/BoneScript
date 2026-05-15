@@ -130,6 +130,61 @@ async function cmdFmt() {
   }
 }
 
+async function cmdWatch() {
+  const file = getActiveFile();
+  if (!file || !file.endsWith(".bone")) {
+    window.showErrorMessage("Open a .bone file to watch.");
+    return;
+  }
+  setStatus("$(eye) Watching…", "BoneScript: watching for changes");
+  window.showInformationMessage(
+    `BoneScript: watching ${path.basename(file)}. Run in terminal for full output.`,
+    "Open Terminal"
+  ).then(choice => {
+    if (choice === "Open Terminal") {
+      commands.executeCommand("workbench.action.terminal.new");
+    }
+  });
+  // Spawn detached so it doesn't block the extension host
+  const bonec = getBonecPath();
+  const proc = cp.spawn(bonec, ["watch", file], {
+    cwd: path.dirname(file),
+    shell: true,
+    detached: false,
+  });
+  proc.stdout.on("data", (d: Buffer) => outputChannel.append(d.toString()));
+  proc.stderr.on("data", (d: Buffer) => outputChannel.append(d.toString()));
+  proc.on("close", () => setStatus("$(symbol-misc) BoneScript", "BoneScript"));
+}
+
+async function cmdDiff() {
+  const files = await window.showOpenDialog({
+    canSelectMany: true,
+    filters: { "BoneScript": ["bone"] },
+    title: "Select two .bone files to diff",
+  });
+  if (!files || files.length < 2) {
+    window.showErrorMessage("Select exactly two .bone files to diff.");
+    return;
+  }
+  const result = await runBonec(["diff", files[0].fsPath, files[1].fsPath]);
+  if (result.code === 0) {
+    window.showInformationMessage("BoneScript: diff complete. See output.");
+  } else {
+    window.showErrorMessage("BoneScript: diff failed. See output for details.");
+  }
+}
+
+async function cmdIr() {
+  const file = getActiveFile();
+  if (!file || !file.endsWith(".bone")) {
+    window.showErrorMessage("Open a .bone file to inspect the IR.");
+    return;
+  }
+  await runBonec(["ir", file], path.dirname(file));
+  outputChannel.show();
+}
+
 async function cmdInit() {
   const name = await window.showInputBox({
     prompt: "Project name",
@@ -144,7 +199,7 @@ async function cmdInit() {
     { label: "multiplayer_game",       description: "JWT · PostgreSQL + Redis · realtime" },
     { label: "social_network",         description: "OAuth2 · PostgreSQL + Redis · eventual" },
     { label: "realtime_collaboration", description: "JWT · PostgreSQL + Redis · realtime" },
-    { label: "iot_system",             description: "API key · DynamoDB · eventual" },
+    { label: "iot_system",             description: "API key · PostgreSQL · eventual" },
   ];
 
   const picked = await window.showQuickPick(domains, {
@@ -183,7 +238,7 @@ function setupAutoFormat(context: ExtensionContext) {
       const doc = event.document;
       if (doc.languageId !== "bone") return;
       if (!workspace.getConfiguration("bonescript").get<boolean>("autoFormat")) return;
-      // Trigger format — the LSP handles the actual edits
+      // Use the LSP formatting provider (documentFormattingProvider is registered)
       await commands.executeCommand("editor.action.formatDocument");
     })
   );
@@ -209,6 +264,9 @@ export function activate(context: ExtensionContext) {
     commands.registerCommand("bone.compile",    cmdCompile),
     commands.registerCommand("bone.check",      cmdCheck),
     commands.registerCommand("bone.fmt",        cmdFmt),
+    commands.registerCommand("bone.watch",      cmdWatch),
+    commands.registerCommand("bone.diff",       cmdDiff),
+    commands.registerCommand("bone.ir",         cmdIr),
     commands.registerCommand("bone.init",       cmdInit),
     commands.registerCommand("bone.showOutput", cmdShowOutput),
   );

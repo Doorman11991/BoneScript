@@ -46,7 +46,7 @@ if ($vsceAvailable) {
     } catch {
         Write-Host "  Could not package .vsix. Trying direct install..." -ForegroundColor Yellow
         # Fallback: copy to VS Code extensions directory
-        $extDir = "$env:USERPROFILE\.vscode\extensions\bonescript.bonescript-vscode-0.2.0"
+        $extDir = "$env:USERPROFILE\.vscode\extensions\bonescript.bonescript-vscode-0.4.0"
         if (-not (Test-Path $extDir)) { New-Item -ItemType Directory -Path $extDir -Force | Out-Null }
         Copy-Item -Recurse -Force "$root\vscode-ext\*" $extDir
         Write-Host "  Extension copied to: $extDir"
@@ -54,7 +54,7 @@ if ($vsceAvailable) {
     }
 } else {
     # Direct copy fallback
-    $extDir = "$env:USERPROFILE\.vscode\extensions\bonescript.bonescript-vscode-0.2.0"
+    $extDir = "$env:USERPROFILE\.vscode\extensions\bonescript.bonescript-vscode-0.4.0"
     if (-not (Test-Path $extDir)) { New-Item -ItemType Directory -Path $extDir -Force | Out-Null }
     Copy-Item -Recurse -Force "$root\vscode-ext\*" $extDir
     Write-Host "  Extension copied to: $extDir"
@@ -74,5 +74,9 @@ Write-Host "  - Hover docs for keywords and user-defined names"
 Write-Host "  - Go-to-definition for entities, capabilities, events"
 Write-Host "  - Document outline (Ctrl+Shift+O)"
 Write-Host "  - Signature help for capability calls"
+Write-Host "  - Quick fixes for all error codes (T001-T015)"
+Write-Host "  - Format Document (Shift+Alt+F) via LSP"
+Write-Host "  - Cross-file rename"
+Write-Host "  - Commands: Compile, Check, Format, Watch, Diff, IR, Init"
 Write-Host ""
 Write-Host "Open any .bone file to get started." -ForegroundColor Cyan

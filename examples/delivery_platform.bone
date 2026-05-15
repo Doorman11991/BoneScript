@@ -33,9 +33,9 @@ system DeliveryPlatform {
     constraints: [
       weight > 0,
       weight <= 100,
-      status in ["pending", "assigned", "in_transit", "delivered", "cancelled"]
+      status in ["pending", "assigned", "in_delivery", "delivered", "cancelled"]
     ]
-    states: pending -> assigned -> in_transit -> delivered | cancelled
+    states: pending -> assigned -> in_delivery -> delivered | cancelled
   }
 
   // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -173,7 +173,7 @@ system DeliveryPlatform {
     algorithm: consistent_hash using {
       key: customer_id,
       nodes: zones,
-      replicas: 100
+      replica_count: 100
     }
     returns: string
     sync: eventual

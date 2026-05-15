@@ -9,12 +9,14 @@ import {
   SignatureHelp, SignatureInformation, ParameterInformation, SignatureHelpParams,
   CodeAction, CodeActionKind, CodeActionParams, TextEdit, WorkspaceEdit,
   RenameParams, PrepareRenameParams,
+  DocumentFormattingParams,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Lexer, LexerError } from 'bonescript-compiler';
 import { Parser } from 'bonescript-compiler';
 import { ParseError } from 'bonescript-compiler';
 import { TypeChecker } from 'bonescript-compiler';
+import { Formatter } from 'bonescript-compiler';
 import { AST } from 'bonescript-compiler';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -62,6 +64,7 @@ connection.onInitialize((_: InitializeParams): InitializeResult => ({
     signatureHelpProvider: { triggerCharacters: ['(', ','] },
     codeActionProvider: { codeActionKinds: ['quickfix'] },
     renameProvider: { prepareProvider: true },
+    documentFormattingProvider: true,
   },
 }));
 
@@ -493,6 +496,32 @@ connection.onSignatureHelp((params: SignatureHelpParams): SignatureHelp | null =
     parameters: paramLabels.map((l: string) => ({ label: l } as ParameterInformation)),
   };
   return { signatures: [sig], activeSignature: 0, activeParameter: Math.min(m[2].split(',').length - 1, cap.params.length - 1) };
+});
+
+// ─── Document Formatting ──────────────────────────────────────────────────────
+// Delegates to the BoneScript Formatter (same as `bonec fmt`).
+
+connection.onDocumentFormatting((params: DocumentFormattingParams): TextEdit[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return [];
+  const text = doc.getText();
+
+  try {
+    const tokens = new Lexer(text).tokenize();
+    const ast = new Parser(tokens).parse();
+    const formatted = new Formatter().format(ast);
+
+    // Only return an edit if the content actually changed
+    if (formatted === text) return [];
+
+    return [{
+      range: Range.create(0, 0, doc.lineCount, 0),
+      newText: formatted,
+    }];
+  } catch {
+    // Parse error — don't format broken files
+    return [];
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

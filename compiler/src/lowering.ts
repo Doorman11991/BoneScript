@@ -11,7 +11,7 @@
 import * as AST from "./ast";
 import * as IR from "./ir";
 import { makeId, serializeExpr, serializeType } from "./lowering_helpers";
-import { lowerEntity } from "./lowering_entities";
+import { lowerEntity, lowerCapability } from "./lowering_entities";
 import { lowerStore, lowerChannel, lowerEvent, lowerFlow } from "./lowering_channels";
 
 export class Lowering {
@@ -51,6 +51,32 @@ export class Lowering {
         c.params.some(p => p.type.kind === "EntityRefType" && p.type.name === entity.name)
       );
       modules.push(lowerEntity(this.systemName, entity, relatedCaps, stores));
+    }
+
+    // Standalone capabilities (no entity params) → utility api_service module
+    // These include algorithm capabilities, pure-function capabilities, etc.
+    const attachedCaps = new Set(
+      entities.flatMap(entity =>
+        capabilities.filter(c =>
+          c.params.some(p => p.type.kind === "EntityRefType" && p.type.name === entity.name)
+        )
+      )
+    );
+    const standaloneCaps = capabilities.filter(c => !attachedCaps.has(c));
+    if (standaloneCaps.length > 0) {
+      const utilMethods = standaloneCaps.map(cap => lowerCapability(cap));
+      modules.push({
+        id: makeId(this.systemName, "api_service", "UtilityService"),
+        kind: "api_service",
+        name: "UtilityService",
+        interfaces: [{ name: "IUtilityService", methods: utilMethods }],
+        models: [],
+        events: [],
+        state_machines: [],
+        relations: [],
+        dependencies: [],
+        config: { authenticated: false, auth_method: "none" },
+      });
     }
 
     // Channels → realtime_service modules
