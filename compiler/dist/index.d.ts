@@ -13,6 +13,8 @@ export { Lowering } from "./lowering";
 export { ConstraintSolver } from "./solver";
 export type { SolverResult } from "./solver";
 export { FullEmitter } from "./emit_full";
+export { NakamaEmitter } from "./emit_nakama";
+export type { NakamaEmittedFile } from "./emit_nakama";
 export type { EmittedFile } from "./emitter";
 export { Verifier } from "./verifier";
 export type { VerifyResult, VerifyIssue } from "./verifier";

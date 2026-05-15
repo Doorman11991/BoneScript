@@ -27,7 +27,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.compile = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
+exports.compile = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.NakamaEmitter = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
 // Core pipeline
 var lexer_1 = require("./lexer");
 Object.defineProperty(exports, "Lexer", { enumerable: true, get: function () { return lexer_1.Lexer; } });
@@ -46,6 +46,8 @@ var solver_1 = require("./solver");
 Object.defineProperty(exports, "ConstraintSolver", { enumerable: true, get: function () { return solver_1.ConstraintSolver; } });
 var emit_full_1 = require("./emit_full");
 Object.defineProperty(exports, "FullEmitter", { enumerable: true, get: function () { return emit_full_1.FullEmitter; } });
+var emit_nakama_1 = require("./emit_nakama");
+Object.defineProperty(exports, "NakamaEmitter", { enumerable: true, get: function () { return emit_nakama_1.NakamaEmitter; } });
 var verifier_1 = require("./verifier");
 Object.defineProperty(exports, "Verifier", { enumerable: true, get: function () { return verifier_1.Verifier; } });
 var optimizer_1 = require("./optimizer");

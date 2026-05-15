@@ -12,6 +12,7 @@ import { TypeChecker } from "./typechecker";
 import { Lowering } from "./lowering";
 import { ConstraintSolver } from "./solver";
 import { FullEmitter } from "./emit_full";
+import { NakamaEmitter } from "./emit_nakama";
 import { Verifier } from "./verifier";
 import { ModuleLoader } from "./module_loader";
 import { Formatter } from "./formatter";
@@ -31,7 +32,7 @@ function main() {
 
   switch (command) {
     case "compile":
-      requireFile(args[1], runCompile);
+      requireFile(args[1], (src, res) => runCompile(src, res, args.slice(2)));
       break;
     case "lex":
       requireFile(args[1], runLex);
@@ -74,10 +75,10 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.2.0");
+  console.log("BoneScript compiler v0.5.4");
   console.log("");
   console.log("Usage:");
-  console.log("  bonec compile <file>   Compile to runnable project");
+  console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
   console.log("  bonec check <file>     Lex + parse + type check (no codegen)");
   console.log("  bonec lex <file>       Show token stream");
   console.log("  bonec parse <file>     Show AST");
@@ -85,6 +86,10 @@ function showHelp() {
   console.log("  bonec fmt <file>       Format file in place");
   console.log("  bonec watch <file>     Recompile on change");
   console.log("  bonec diff <old.bone> <new.bone>  Show schema migration diff");
+  console.log("");
+  console.log("compile options:");
+  console.log("  --target <name>        Output target (default: express)");
+  console.log("                         Options: express, nakama");
   console.log("");
   console.log("init options:");
   console.log("  bonec init <name> --domain <name>  Scaffold from a domain template");
@@ -267,7 +272,26 @@ function runInit(args: string[]) {
 
 // â”€â”€â”€ Compile (full pipeline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function runCompile(source: string, resolved: string) {
+function runCompile(source: string, resolved: string, extraArgs: string[] = []) {
+  // Parse --target flag (default: express)
+  let target: "express" | "nakama" = "express";
+  for (let i = 0; i < extraArgs.length; i++) {
+    if (extraArgs[i] === "--target" && extraArgs[i + 1]) {
+      const t = extraArgs[i + 1];
+      if (t !== "express" && t !== "nakama") {
+        console.error(`Unknown target '${t}'. Valid targets: express, nakama`);
+        process.exit(1);
+      }
+      target = t;
+      i++;
+    }
+  }
+
+  if (target === "nakama") {
+    runCompileNakama(source, resolved);
+    return;
+  }
+
   try {
     const tokens = new Lexer(source).tokenize();
     console.log(`  [1/7] Lexed: ${tokens.length} tokens`);
@@ -417,6 +441,62 @@ function runCompile(source: string, resolved: string) {
 }
 
 main();
+
+// ─── Compile (Nakama target) ──────────────────────────────────────────────────
+
+function runCompileNakama(source: string, resolved: string) {
+  try {
+    const tokens = new Lexer(source).tokenize();
+    console.log(`  [1/5] Lexed: ${tokens.length} tokens`);
+
+    const loader = new ModuleLoader();
+    const loadResult = loader.load(resolved);
+    if (loadResult.errors.length > 0) {
+      for (const e of loadResult.errors.slice(0, 10)) {
+        console.log(`         ${path.basename(e.file)}: ${e.error.message}`);
+      }
+      if (!loadResult.ast) process.exit(1);
+    }
+    const ast = loadResult.ast!;
+    console.log(`  [2/5] Parsed: ${ast.systems.length} system(s)`);
+
+    const typeErrors = new TypeChecker().check(ast);
+    if (typeErrors.length > 0) {
+      for (const err of typeErrors) {
+        console.log(`         ${err.code} at ${err.loc.line}:${err.loc.column}: ${err.message}`);
+      }
+    } else {
+      console.log(`  [3/5] Type check: v (0 errors)`);
+    }
+
+    const sourceHash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+    const irSystems = new Lowering().lower(ast, sourceHash);
+    console.log(`  [4/5] Lowered to IR: ${irSystems.reduce((s, sys) => s + sys.modules.length, 0)} modules`);
+
+    const emitter = new NakamaEmitter();
+    const allFiles: ReturnType<typeof emitter.emit> = [];
+    for (const sys of irSystems) {
+      allFiles.push(...emitter.emit(sys));
+    }
+    console.log(`  [5/5] Nakama emit: ${allFiles.length} files`);
+
+    const outputDir = path.resolve(path.dirname(resolved), "output-nakama");
+    for (const f of allFiles) {
+      const outPath = path.join(outputDir, f.path);
+      const dir = path.dirname(outPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(outPath, f.content, "utf-8");
+    }
+
+    console.log(`\nv Nakama compilation complete. ${allFiles.length} files written to output-nakama/`);
+    console.log(`\nNext steps:`);
+    console.log(`  cd output-nakama && npm install && npm run build`);
+    console.log(`  # Copy build/ to your Nakama runtime path`);
+  } catch (e: any) {
+    console.error(`x ${e.message}`);
+    process.exit(1);
+  }
+}
 
 // ─── Diff ─────────────────────────────────────────────────────────────────────
 
