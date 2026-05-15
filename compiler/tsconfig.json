@@ -14,5 +14,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/test.ts", "src/test_typechecker.ts"]
+  "exclude": ["node_modules", "dist", "src/test.ts", "src/test_typechecker.ts", "src/test_nakama.ts"]
 }
