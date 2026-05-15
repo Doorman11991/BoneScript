@@ -29,6 +29,12 @@ export * as AST from "./ast";
 export * as IR from "./ir";
 export { lookupAlgorithm, listAlgorithms, listByCategory } from "./algorithm_catalog";
 export { mergeWithExisting, extractImplementations, validateExtensions } from "./extension_manager";
+export { emitOpenApiSpec, emitOpenApiJson } from "./emit_openapi";
+export { emitTypescriptSdk, emitSdkPackageJson } from "./emit_sdk";
+export { emitZodSchemas } from "./emit_zod";
+export { emitPostmanCollection } from "./emit_postman";
+export { emitSeedFile } from "./emit_seed";
+export { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
 /**
  * Convenience function: compile a .bone source string to files.
  */

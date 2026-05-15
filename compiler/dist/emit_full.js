@@ -16,6 +16,12 @@ const emit_batch_1 = require("./emit_batch");
 const emit_sourcemap_1 = require("./emit_sourcemap");
 const emit_tests_1 = require("./emit_tests");
 const emit_deploy_1 = require("./emit_deploy");
+const emit_openapi_1 = require("./emit_openapi");
+const emit_sdk_1 = require("./emit_sdk");
+const emit_zod_1 = require("./emit_zod");
+const emit_postman_1 = require("./emit_postman");
+const emit_seed_1 = require("./emit_seed");
+const emit_audit_1 = require("./emit_audit");
 function toSnakeCase(s) {
     return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
@@ -148,6 +154,19 @@ class FullEmitter {
         files.push({ path: "docker-compose.yaml", content: this.emitDockerCompose(system), language: "yaml", source_module: "infra" });
         // 9. README
         files.push({ path: "README.md", content: this.emitReadme(system), language: "yaml", source_module: "root" });
+        // 12. OpenAPI spec
+        files.push({ path: "openapi.yaml", content: (0, emit_openapi_1.emitOpenApiSpec)(system), language: "yaml", source_module: "docs" });
+        // 13. TypeScript SDK
+        files.push({ path: "sdk/client.ts", content: (0, emit_sdk_1.emitTypescriptSdk)(system), language: "typescript", source_module: "sdk" });
+        // 14. Zod schemas
+        files.push({ path: "src/schemas.ts", content: (0, emit_zod_1.emitZodSchemas)(system), language: "typescript", source_module: "validation" });
+        // 15. Postman collection
+        files.push({ path: `${system.name}.postman_collection.json`, content: (0, emit_postman_1.emitPostmanCollection)(system), language: "json", source_module: "docs" });
+        // 16. Seed file
+        files.push({ path: "src/seed.ts", content: (0, emit_seed_1.emitSeedFile)(system), language: "typescript", source_module: "dev" });
+        // 17. Audit log
+        files.push({ path: "migrations/audit_log.sql", content: (0, emit_audit_1.emitAuditSchema)(), language: "sql", source_module: "infra" });
+        files.push({ path: "src/audit.ts", content: (0, emit_audit_1.emitAuditMiddleware)(system), language: "typescript", source_module: "infra" });
         // 10. Source map + debug handler
         files.push({ path: `${system.name}.bone.map`, content: (0, emit_sourcemap_1.emitSourceMapFile)(system, `${system.name}.bone`), language: "json", source_module: "root" });
         files.push({ path: "src/debug.ts", content: (0, emit_sourcemap_1.emitDebugHandler)(system), language: "typescript", source_module: "infra" });

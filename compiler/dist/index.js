@@ -27,7 +27,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.compile = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.NakamaEmitter = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
+exports.compile = exports.emitAuditMiddleware = exports.emitAuditSchema = exports.emitSeedFile = exports.emitPostmanCollection = exports.emitZodSchemas = exports.emitSdkPackageJson = exports.emitTypescriptSdk = exports.emitOpenApiJson = exports.emitOpenApiSpec = exports.validateExtensions = exports.extractImplementations = exports.mergeWithExisting = exports.listByCategory = exports.listAlgorithms = exports.lookupAlgorithm = exports.IR = exports.AST = exports.scaffold = exports.Formatter = exports.ModuleLoader = exports.optimize = exports.Verifier = exports.NakamaEmitter = exports.FullEmitter = exports.ConstraintSolver = exports.Lowering = exports.TypeChecker = exports.RecoveringParser = exports.ParseError = exports.Parser = exports.TokenKind = exports.LexerError = exports.Lexer = void 0;
 // Core pipeline
 var lexer_1 = require("./lexer");
 Object.defineProperty(exports, "Lexer", { enumerable: true, get: function () { return lexer_1.Lexer; } });
@@ -72,6 +72,22 @@ var extension_manager_1 = require("./extension_manager");
 Object.defineProperty(exports, "mergeWithExisting", { enumerable: true, get: function () { return extension_manager_1.mergeWithExisting; } });
 Object.defineProperty(exports, "extractImplementations", { enumerable: true, get: function () { return extension_manager_1.extractImplementations; } });
 Object.defineProperty(exports, "validateExtensions", { enumerable: true, get: function () { return extension_manager_1.validateExtensions; } });
+// New emitters
+var emit_openapi_1 = require("./emit_openapi");
+Object.defineProperty(exports, "emitOpenApiSpec", { enumerable: true, get: function () { return emit_openapi_1.emitOpenApiSpec; } });
+Object.defineProperty(exports, "emitOpenApiJson", { enumerable: true, get: function () { return emit_openapi_1.emitOpenApiJson; } });
+var emit_sdk_1 = require("./emit_sdk");
+Object.defineProperty(exports, "emitTypescriptSdk", { enumerable: true, get: function () { return emit_sdk_1.emitTypescriptSdk; } });
+Object.defineProperty(exports, "emitSdkPackageJson", { enumerable: true, get: function () { return emit_sdk_1.emitSdkPackageJson; } });
+var emit_zod_1 = require("./emit_zod");
+Object.defineProperty(exports, "emitZodSchemas", { enumerable: true, get: function () { return emit_zod_1.emitZodSchemas; } });
+var emit_postman_1 = require("./emit_postman");
+Object.defineProperty(exports, "emitPostmanCollection", { enumerable: true, get: function () { return emit_postman_1.emitPostmanCollection; } });
+var emit_seed_1 = require("./emit_seed");
+Object.defineProperty(exports, "emitSeedFile", { enumerable: true, get: function () { return emit_seed_1.emitSeedFile; } });
+var emit_audit_1 = require("./emit_audit");
+Object.defineProperty(exports, "emitAuditSchema", { enumerable: true, get: function () { return emit_audit_1.emitAuditSchema; } });
+Object.defineProperty(exports, "emitAuditMiddleware", { enumerable: true, get: function () { return emit_audit_1.emitAuditMiddleware; } });
 /**
  * Convenience function: compile a .bone source string to files.
  */

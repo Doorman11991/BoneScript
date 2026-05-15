@@ -32,6 +32,12 @@ import { emitBatchExecutor } from "./emit_batch";
 import { emitSourceMapFile, emitDebugHandler } from "./emit_sourcemap";
 import { emitTestSuite } from "./emit_tests";
 import { emitDockerfile, emitDockerignore, emitK8sDeployment, emitGithubActions } from "./emit_deploy";
+import { emitOpenApiSpec } from "./emit_openapi";
+import { emitTypescriptSdk } from "./emit_sdk";
+import { emitZodSchemas } from "./emit_zod";
+import { emitPostmanCollection } from "./emit_postman";
+import { emitSeedFile } from "./emit_seed";
+import { emitAuditSchema, emitAuditMiddleware } from "./emit_audit";
 
 function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
@@ -179,6 +185,25 @@ export class FullEmitter {
 
     // 9. README
     files.push({ path: "README.md", content: this.emitReadme(system), language: "yaml", source_module: "root" });
+
+    // 12. OpenAPI spec
+    files.push({ path: "openapi.yaml", content: emitOpenApiSpec(system), language: "yaml", source_module: "docs" });
+
+    // 13. TypeScript SDK
+    files.push({ path: "sdk/client.ts", content: emitTypescriptSdk(system), language: "typescript", source_module: "sdk" });
+
+    // 14. Zod schemas
+    files.push({ path: "src/schemas.ts", content: emitZodSchemas(system), language: "typescript", source_module: "validation" });
+
+    // 15. Postman collection
+    files.push({ path: `${system.name}.postman_collection.json`, content: emitPostmanCollection(system), language: "json", source_module: "docs" });
+
+    // 16. Seed file
+    files.push({ path: "src/seed.ts", content: emitSeedFile(system), language: "typescript", source_module: "dev" });
+
+    // 17. Audit log
+    files.push({ path: "migrations/audit_log.sql", content: emitAuditSchema(), language: "sql", source_module: "infra" });
+    files.push({ path: "src/audit.ts", content: emitAuditMiddleware(system), language: "typescript", source_module: "infra" });
 
     // 10. Source map + debug handler
     files.push({ path: `${system.name}.bone.map`, content: emitSourceMapFile(system, `${system.name}.bone`), language: "json", source_module: "root" });

@@ -75,7 +75,7 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.5.4");
+  console.log("BoneScript compiler v0.5.6");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
@@ -90,6 +90,9 @@ function showHelp() {
   console.log("compile options:");
   console.log("  --target <name>        Output target (default: express)");
   console.log("                         Options: express, nakama");
+  console.log("  --no-sdk               Skip SDK generation");
+  console.log("  --no-openapi           Skip OpenAPI spec generation");
+  console.log("  --no-seed              Skip seed file generation");
   console.log("");
   console.log("init options:");
   console.log("  bonec init <name> --domain <name>  Scaffold from a domain template");
@@ -275,6 +278,10 @@ function runInit(args: string[]) {
 function runCompile(source: string, resolved: string, extraArgs: string[] = []) {
   // Parse --target flag (default: express)
   let target: "express" | "nakama" = "express";
+  // Parse optional feature flags (future enhancement — documented for now)
+  let _noSdk = false;
+  let _noOpenApi = false;
+  let _noSeed = false;
   for (let i = 0; i < extraArgs.length; i++) {
     if (extraArgs[i] === "--target" && extraArgs[i + 1]) {
       const t = extraArgs[i + 1];
@@ -284,6 +291,12 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
       }
       target = t;
       i++;
+    } else if (extraArgs[i] === "--no-sdk") {
+      _noSdk = true;
+    } else if (extraArgs[i] === "--no-openapi") {
+      _noOpenApi = true;
+    } else if (extraArgs[i] === "--no-seed") {
+      _noSeed = true;
     }
   }
 

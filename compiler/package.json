@@ -1,6 +1,6 @@
 {
   "name": "bonescript-compiler",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
