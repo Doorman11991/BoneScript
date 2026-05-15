@@ -1,152 +1,291 @@
 # BoneScript
 
-A formal declarative language that compiles structured system declarations into
-deterministic, runnable backend code (TypeScript services, SQL schemas, infrastructure configs).
+A declarative language that compiles system descriptions into complete, runnable Node.js backends. Write the bones, get the whole skeleton.
 
-You write the bones of your system. BoneScript compiles them to a working backend.
+```bone
+system Shop {
+  entity Product {
+    owns: [name: string, price: uint, stock: uint]
+    constraints: [price > 0, stock >= 0]
+    states: available -> sold_out | archived
+  }
 
-## Status: v0.2.0
+  capability purchase(buyer: User, product: Product, qty: uint) {
+    requires: [product.stock >= qty, buyer.balance >= product.price * qty]
+    effects: [product.stock -= qty, buyer.balance -= product.price * qty]
+    emits: OrderPlaced
+    sync: transactional
+  }
 
-Working pipeline: Lex → Parse → Type Check → Lower IR → Solve → Emit → Verify.
-Output is a complete Node.js project that compiles and runs.
+  event OrderPlaced {
+    payload: { order_id: uuid, buyer_id: uuid, total: uint }
+    delivery: exactly_once
+    ttl: 90d
+  }
+}
+```
+
+Run `bone compile shop.bone` and get back a running Express API with PostgreSQL, JWT auth, state machine enforcement, transactional SQL, durable events, health checks, migrations, WebSocket support, a Dockerfile, and a GitHub Actions CI pipeline. No LLMs. Deterministic — same input always produces identical output.
+
+---
 
 ## Quick Start
 
 ```bash
-# Install
-cd compiler
+# 1. Install the compiler
+cd compiler && npm install
+
+# 2. Scaffold a new project
+npx ts-node src/cli.ts init my-app --domain saas_platform --out ../my-app
+
+# 3. Compile
+npx ts-node src/cli.ts compile ../my-app/my-app.bone
+
+# 4. Run it
+cd ../my-app/output
 npm install
-
-# Scaffold a new project
-npx ts-node src/cli.ts init my-project --domain saas_platform --out ../my-project
-
-# Compile to runnable code
-npx ts-node src/cli.ts compile ../my-project/my-project.bone
-
-# The output is a real Node.js project — start it
-cd ../my-project/output
-npm install
-docker compose up -d  # start postgres + redis
+docker compose up -d   # starts Postgres + Redis
 npm run migrate
 npm run dev
+# → http://localhost:3000
 ```
+
+## VS Code Extension
+
+```bash
+# Build and install in one step
+.\install-extension.ps1
+```
+
+Open any `.bone` file and get:
+- Real-time error highlighting (lex + parse + type check as you type)
+- Context-aware completions — different suggestions inside `entity`, `capability`, `channel`, etc.
+- Hover docs for every keyword and all your declared entities, capabilities, and events
+- Go-to-definition for entity/capability/event references
+- Document outline (Ctrl+Shift+O)
+- Signature help when typing capability calls
+- Quick fixes for common errors
+
+---
+
+## What Gets Generated
+
+From a single `.bone` file, the compiler produces a complete Node.js project:
+
+```
+output/
+├── src/
+│   ├── index.ts          Express server with all routes wired
+│   ├── db.ts             Postgres connection pool
+│   ├── events.ts         Durable event bus (transactional outbox)
+│   ├── auth.ts           JWT middleware
+│   ├── health.ts         /health/live, /health/ready, /health/metrics
+│   ├── logger.ts         Structured logging (spec/10 schema)
+│   ├── metrics.ts        Prometheus-style counters/histograms
+│   ├── failure_rules.ts  Rule-based remediation (no ML)
+│   ├── flows.ts          Saga runtime with backward compensation
+│   ├── websocket.ts      WebSocket server (if channels declared)
+│   ├── routes/           One file per entity — CRUD + capabilities
+│   └── state_machines/   One file per entity with states
+├── migrations/           SQL schemas with indexes, triggers, FK constraints
+├── Dockerfile
+├── docker-compose.yaml   Postgres + Redis for local dev
+├── .github/workflows/    CI/CD pipeline
+└── src/tests.ts          Generated regression tests
+```
+
+---
+
+## Language Features
+
+**Entities** — stateful data objects with fields, constraints, state machines, and relations
+
+```bone
+entity Order {
+  owns: [buyer_id: uuid, total: uint, status: string]
+  constraints: [total > 0, status in ["pending", "paid", "shipped"]]
+  states: pending -> paid -> shipped -> delivered | cancelled
+  relation buyer: belongs_to User
+}
+```
+
+**Capabilities** — named operations with preconditions, effects, and event emissions
+
+```bone
+capability ship_order(seller: Seller, order: Order) {
+  requires: [order.status == "paid", order.seller_id == seller.id]
+  effects: [order.status = "shipped"]
+  emits: OrderShipped
+  sync: transactional
+  timeout: 10s
+}
+```
+
+**Events** — immutable records with delivery guarantees
+
+```bone
+event OrderShipped {
+  payload: { order_id: uuid, shipped_at: timestamp }
+  delivery: exactly_once   // transactional outbox + deduplication
+  ttl: 30d
+}
+```
+
+**Channels** — real-time WebSocket communication
+
+```bone
+channel game_lobby {
+  transport: websocket
+  ordering: causal
+  participants: set<Player>
+  persistence: last_100
+}
+```
+
+**Pipelines** — multi-step operations with automatic rollback
+
+```bone
+capability checkout(buyer: Buyer, cart: Cart) {
+  pipeline: {
+    validate_inventory(cart)
+    charge_payment(buyer, cart.total) as payment
+    create_order(buyer, cart, payment)
+    on_error: rollback
+  }
+  sync: transactional
+}
+```
+
+**Algorithms** — named implementations from a closed catalog
+
+```bone
+capability find_route(start: string, end: string) {
+  algorithm: shortest_path using { graph: road_network, source: start, target: end }
+  returns: json
+}
+```
+
+**Extension points** — escape hatches for custom logic that survive recompilation
+
+```bone
+extension_point calculate_fee(order: Order) {
+  returns: uint
+  stable: true   // compilation fails if not implemented
+}
+```
+
+---
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `bone compile <file>` | Full 7-stage compilation → runnable project |
-| `bone check <file>` | Lex + parse + type check (no codegen) |
-| `bone lex <file>` | Show token stream |
-| `bone parse <file>` | Show AST as JSON |
-| `bone ir <file>` | Show IR as JSON |
-| `bone fmt <file>` | Format file in place |
-| `bone watch <file>` | Recompile on change |
-| `bone init <name>` | Scaffold new project |
+| `bone check <file>` | Validate without generating code |
+| `bone fmt <file>` | Format in place |
+| `bone watch <file>` | Recompile on save |
+| `bone init <name>` | Scaffold from a domain template |
+| `bone diff <old> <new>` | Show schema migration diff |
+| `bone test [output-dir]` | Run generated regression tests |
+| `bone debug <file>` | Generate source maps |
+| `bone verify-determinism <file>` | Confirm two compilations are identical |
 
-### `init` Domains
+### Domain Templates
 
-Choose from:
-- `multiplayer_game` — JWT auth, WebSocket, Redis sessions
-- `saas_platform` — OAuth2, Postgres, eventual consistency
-- `iot_system` — API keys, DynamoDB, gRPC streams
-- `social_network` — OAuth2, Postgres + Redis, causal ordering
-- `marketplace` — OAuth2, Postgres, transactional ACID
-- `realtime_collaboration` — JWT, WebSocket, full persistence
+`bone init my-app --domain <name>`
 
-## Editor Support
+| Domain | Auth | DB | Sync |
+|--------|------|----|------|
+| `multiplayer_game` | JWT | Postgres + Redis | realtime |
+| `saas_platform` | OAuth2 | Postgres | eventual |
+| `iot_system` | API key | DynamoDB | eventual |
+| `social_network` | OAuth2 | Postgres + Redis | eventual |
+| `marketplace` | OAuth2 | Postgres | transactional |
+| `realtime_collaboration` | JWT | Postgres + Redis | realtime |
 
-A VS Code extension is in `vscode-ext/` providing:
-- Syntax highlighting (TextMate grammar)
-- Real-time diagnostics (lex + parse + type errors as you type)
-- Autocomplete with snippets for declarations, keywords, types
-- Hover documentation for keywords
-- Bracket matching and auto-closing
+---
 
-Backed by the LSP server in `lsp/`.
+## Algorithm Catalog
 
-## Project Structure
+Built-in algorithms available via `algorithm:` in any capability:
 
+| Name | Category | Complexity |
+|------|----------|------------|
+| `shortest_path` | graph | O((V+E) log V) |
+| `topological_sort` | graph | O(V+E) |
+| `binary_search` | search | O(log n) |
+| `bipartite_matching` | matching | O(E√V) |
+| `round_robin` | scheduling | O(n) |
+| `weighted_average` | stats | O(n) |
+| `percentile` | stats | O(n log n) |
+| `rank_by` | sort | O(n log n) |
+| `consistent_hash` | crypto | O(N log N) build |
+
+---
+
+## Event Delivery
+
+Two modes, switchable via environment variable:
+
+```bash
+EVENT_MODE=in_process   # default — in-memory, fast, no guarantees
+EVENT_MODE=durable      # Postgres-backed transactional outbox
 ```
-spec/                       Language specification (10 documents)
-compiler/                   Reference compiler
-  src/
-    lexer.ts                Tokenizer
-    parser.ts               Strict parser
-    parser_recovery.ts      Parser with error recovery
-    parse_decls*.ts         Declaration parsers
-    parse_expr.ts           Expression parser
-    parse_types.ts          Type expression parser
-    ast.ts                  AST definitions
-    typechecker.ts          Type checker (Stage 3)
-    types.ts                Internal type system
-    ir.ts                   IR data structures
-    lowering.ts             AST → IR (Stage 4)
-    solver.ts               Constraint solver (Stage 5)
-    emitter.ts              Schema/types emitter
-    emit_runtime.ts         Runtime code emitter
-    emit_full.ts            Full project emitter (Stage 6)
-    emit_websocket.ts       WebSocket server emitter
-    emit_maintenance.ts     Logger, metrics, health, failure rules
-    emit_extras.ts          Saga runtime, derived fields, channel filters
-    emit_composition.ts     Pipeline + algorithm emitters
-    algorithm_catalog.ts    Closed catalog of named algorithms
-    verifier.ts             Output verifier (Stage 7)
-    module_loader.ts        Cross-file imports
-    formatter.ts            Source formatter
-    scaffold.ts             Project scaffolder
-    cli.ts                  CLI entry point
-lsp/                        Language Server Protocol server
-vscode-ext/                 VS Code extension
-examples/                   Example .bone programs
-```
+
+In durable mode:
+- `at_least_once` — retried with exponential backoff until acknowledged
+- `exactly_once` — deduplicated via `event_processed` table
+
+---
 
 ## Compilation Pipeline
 
-| Stage | Name | Function |
-|-------|------|----------|
-| 1 | Lex | Source → tokens |
-| 2 | Parse | Tokens → AST (with error recovery) |
-| 3 | Type Check | Validate types, constraints, effects |
-| 4 | Lower | AST → IR with deterministic IDs |
-| 5 | Solve | Resolve underspecified variables via domain defaults |
-| 6 | Emit | IR → TypeScript + SQL + YAML + JSON |
-| 7 | Verify | Validate IR consistency and generated code |
+Every stage is deterministic — same `.bone` file always produces bitwise-identical output.
 
-Every stage is **deterministic**: same input always produces bitwise-identical output.
-
-## Sample Program
-
-```bone
-system InventoryPlatform {
-  domain: multiplayer_game
-
-  entity Player {
-    owns: [username: string, score: uint]
-    constraints: [username.unique, score >= 0]
-    states: active -> suspended | deleted
-    auth: jwt
-  }
-
-  capability award_xp(player: Player, amount: uint) {
-    requires: [amount > 0, player.state == "active"]
-    effects: [player.score += amount]
-    emits: PlayerLeveledUp
-    sync: eventual
-  }
-
-  event PlayerLeveledUp {
-    payload: { player_id: uuid, new_score: uint }
-    delivery: at_least_once
-    ttl: 30d
-  }
-}
 ```
+.bone source
+    ↓ Lex          tokens
+    ↓ Parse        AST (with error recovery)
+    ↓ Type Check   validated AST
+    ↓ Lower        Architecture IR
+    ↓ Optimize     dead module elimination, deduplication
+    ↓ Solve        constraint propagation → concrete decisions
+    ↓ Emit         TypeScript + SQL + YAML + JSON
+    ↓ Verify       IR consistency + generated code checks
+```
+
+---
 
 ## Tests
 
 ```bash
 cd compiler
-npx ts-node src/test.ts              # 6 tests (lexer + parser + determinism)
-npx ts-node src/test_typechecker.ts  # 7 tests (type errors)
+npx ts-node src/test.ts              # lexer + parser + determinism (6 tests)
+npx ts-node src/test_typechecker.ts  # type error detection (7 tests)
+npx ts-node src/cli.ts verify-determinism examples/inventory_platform.bone
 ```
+
+---
+
+## Project Structure
+
+```
+spec/           Language specification (10 formal documents)
+compiler/       Reference compiler (TypeScript)
+  src/          Source — lexer, parser, type checker, IR, emitters, CLI
+  dist/         Compiled output (required by LSP)
+lsp/            Language Server Protocol server
+vscode-ext/     VS Code extension
+examples/       Example .bone programs
+  inventory_platform.bone   Multiplayer inventory system
+  delivery_platform.bone    Delivery routing with algorithms
+  marketplace/shop.bone     Full marketplace with flows and relations
+```
+
+---
+
+## Status
+
+The compiler pipeline is complete and deterministic. The generated code compiles and runs. The VS Code extension provides real-time feedback. Tested against a real marketplace application.
+
+Not yet: published to npm, marketplace listing for the extension, end-to-end tests with a live database.

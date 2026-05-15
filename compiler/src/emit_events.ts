@@ -175,9 +175,7 @@ class DurableBus {
       await client.query("BEGIN");
 
       // Fetch pending events (lock rows to prevent concurrent processing)
-      const { rows } = await client.query<{
-        id: string; event_type: string; payload: any; source: string; correlation_id: string; attempts: number;
-      }>(\`
+      const { rows } = await client.query(\`
         SELECT id, event_type, payload, source, correlation_id, attempts
         FROM event_outbox
         WHERE status = 'pending' AND scheduled_at <= NOW()

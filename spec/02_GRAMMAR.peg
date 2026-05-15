@@ -1,0 +1,505 @@
+# BoneScript Formal Grammar
+# Notation: PEG (Parsing Expression Grammar)
+# Reference: Bryan Ford, "Parsing Expression Grammars" (2004)
+#
+# This grammar is the SINGLE SOURCE OF TRUTH for what constitutes
+# a syntactically valid BoneScript program. No input that does not match
+# this grammar is a valid program.
+#
+# Properties:
+#   - Unambiguous (PEG is inherently ordered-choice, no ambiguity)
+#   - Context-free (no state required during parsing)
+#   - Decidable (linear-time parsing via packrat)
+#   - Complete (every valid program is derivable)
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# TOP-LEVEL
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Program         <- Spacing SystemDecl+ EndOfFile
+SystemDecl      <- SYSTEM Identifier SystemBody
+
+SystemBody      <- LBRACE
+                     DomainDecl?
+                     Declaration*
+                   RBRACE
+
+DomainDecl      <- DOMAIN COLON DomainLiteral
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# DECLARATIONS
+# A system body contains zero or more declarations in any order.
+# The type system (spec 04) enforces structural validity post-parse.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Declaration     <- EntityDecl
+                 / CapabilityDecl
+                 / ChannelDecl
+                 / StoreDecl
+                 / EventDecl
+                 / ConstraintDecl
+                 / PolicyDecl
+                 / FlowDecl
+                 / ImportDecl
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ENTITY
+# An entity is a named, stateful concept with owned fields, constraints,
+# state machine, and auth requirements.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+EntityDecl      <- ENTITY Identifier EntityBody
+EntityBody      <- LBRACE EntityClause* RBRACE
+
+EntityClause    <- OwnsClause
+                 / ConstraintsClause
+                 / StatesClause
+                 / AuthClause
+                 / RelationClause
+                 / IndexClause
+                 / DerivedClause
+
+OwnsClause      <- OWNS COLON LBRACKET FieldList RBRACKET
+FieldList       <- Field (COMMA Field)*
+Field           <- Identifier COLON TypeExpr (EQUALS Literal)?
+
+ConstraintsClause <- CONSTRAINTS COLON LBRACKET ConstraintExprList RBRACKET
+ConstraintExprList <- ConstraintExpr (COMMA ConstraintExpr)*
+ConstraintExpr  <- ComparisonExpr / MembershipExpr / UniquenessExpr / CustomExpr
+
+StatesClause    <- STATES COLON StateGraph
+StateGraph      <- StateNode (ARROW StateNode)* (PIPE StateNode)*
+StateNode       <- Identifier StateGuard?
+StateGuard      <- LPAREN ConstraintExpr RPAREN
+
+AuthClause      <- AUTH COLON AuthMethod
+AuthMethod      <- JWT / OAUTH2 / APIKEY / SESSION / NONE
+
+RelationClause  <- RELATION Identifier COLON RelationType Identifier Cardinality?
+RelationType    <- HAS_ONE / HAS_MANY / BELONGS_TO / MANY_TO_MANY
+Cardinality     <- LBRACKET IntLiteral DOTDOT (IntLiteral / STAR) RBRACKET
+
+IndexClause     <- INDEX COLON LBRACKET FieldRefList RBRACKET
+DerivedClause   <- DERIVED Identifier COLON Expression
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# CAPABILITY
+# A capability is a named operation with preconditions, effects, emissions,
+# and synchronization requirements. This is the VERB of the language.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+CapabilityDecl  <- CAPABILITY Identifier LPAREN ParamList RPAREN CapabilityBody
+CapabilityBody  <- LBRACE CapabilityClause* RBRACE
+
+CapabilityClause <- RequiresClause
+                  / EffectsClause
+                  / EmitsClause
+                  / SyncClause
+                  / TimeoutClause
+                  / RetryClause
+                  / IdempotencyClause
+
+ParamList       <- Param (COMMA Param)*
+Param           <- Identifier COLON TypeExpr
+
+RequiresClause  <- REQUIRES COLON LBRACKET ConstraintExprList RBRACKET
+EffectsClause   <- EFFECTS COLON LBRACKET EffectList RBRACKET
+EffectList      <- Effect (COMMA Effect)*
+Effect          <- Assignment / Mutation / Emission
+
+Assignment      <- FieldRef EQUALS Expression
+Mutation        <- FieldRef MutOp Expression
+MutOp           <- PLUSEQ / MINUSEQ / APPENDEQ
+
+EmitsClause     <- EMITS COLON EventRef (COMMA EventRef)*
+EventRef        <- Identifier EventPayload?
+EventPayload    <- LPAREN FieldRefList RPAREN
+
+SyncClause      <- SYNC COLON SyncMode
+SyncMode        <- REALTIME / EVENTUAL / BATCH / TRANSACTIONAL
+
+TimeoutClause   <- TIMEOUT COLON Duration
+RetryClause     <- RETRY COLON RetryPolicy
+RetryPolicy     <- LBRACE RetryField (COMMA RetryField)* RBRACE
+RetryField      <- (MAX_ATTEMPTS / BACKOFF / INTERVAL) COLON Literal
+
+IdempotencyClause <- IDEMPOTENT COLON BoolLiteral
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# CHANNEL
+# A channel is a named communication pathway with transport, ordering,
+# and persistence semantics.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+ChannelDecl     <- CHANNEL Identifier ChannelBody
+ChannelBody     <- LBRACE ChannelClause* RBRACE
+
+ChannelClause   <- TransportClause
+                 / OrderingClause
+                 / ParticipantsClause
+                 / PersistenceClause
+                 / FilterClause
+                 / MaxSizeClause
+
+TransportClause     <- TRANSPORT COLON TransportType
+TransportType       <- WEBSOCKET / SSE / POLLING / GRPC_STREAM
+
+OrderingClause      <- ORDERING COLON OrderingType
+OrderingType        <- CAUSAL / FIFO / TOTAL / UNORDERED
+
+ParticipantsClause  <- PARTICIPANTS COLON TypeExpr
+PersistenceClause   <- PERSISTENCE COLON PersistenceMode
+PersistenceMode     <- NONE_LIT / LAST_N / FULL / DURATION
+FilterClause        <- FILTER COLON Expression
+MaxSizeClause       <- MAX_SIZE COLON IntLiteral
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# STORE
+# Explicit data store declaration with engine, schema, and retention.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+StoreDecl       <- STORE Identifier StoreBody
+StoreBody       <- LBRACE StoreClause* RBRACE
+
+StoreClause     <- EngineClause
+                 / SchemaClause
+                 / RetentionClause
+                 / PartitionClause
+                 / ReplicaClause
+
+EngineClause    <- ENGINE COLON EngineType
+EngineType      <- POSTGRESQL / REDIS / MONGODB / SQLITE / S3 / DYNAMODB
+
+SchemaClause    <- SCHEMA COLON LBRACE FieldList RBRACE
+RetentionClause <- RETENTION COLON Duration
+PartitionClause <- PARTITION COLON FieldRef
+ReplicaClause   <- REPLICAS COLON IntLiteral
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# EVENT
+# Named event with typed payload and delivery semantics.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+EventDecl       <- EVENT Identifier EventBody
+EventBody       <- LBRACE EventClause* RBRACE
+
+EventClause     <- PayloadClause
+                 / DeliveryClause
+                 / TTLClause
+
+PayloadClause   <- PAYLOAD COLON LBRACE FieldList RBRACE
+DeliveryClause  <- DELIVERY COLON DeliveryMode
+DeliveryMode    <- AT_LEAST_ONCE / AT_MOST_ONCE / EXACTLY_ONCE
+TTLClause       <- TTL COLON Duration
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# CONSTRAINT (top-level, cross-entity)
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+ConstraintDecl  <- CONSTRAINT Identifier COLON ConstraintExpr
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# POLICY
+# Security, rate-limiting, access control declarations.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+PolicyDecl      <- POLICY Identifier PolicyBody
+PolicyBody      <- LBRACE PolicyClause* RBRACE
+
+PolicyClause    <- RateLimitClause
+                 / AccessClause
+                 / AuditClause
+                 / EncryptionClause
+
+RateLimitClause <- RATE_LIMIT COLON IntLiteral PER Duration
+AccessClause    <- ACCESS COLON LBRACKET RoleList RBRACKET
+RoleList        <- Identifier (COMMA Identifier)*
+AuditClause     <- AUDIT COLON BoolLiteral
+EncryptionClause <- ENCRYPTION COLON EncryptionMode
+EncryptionMode  <- AT_REST / IN_TRANSIT / BOTH / NONE_LIT
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# FLOW
+# Multi-step orchestration (saga/workflow pattern).
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+FlowDecl        <- FLOW Identifier FlowBody
+FlowBody        <- LBRACE FlowStep+ RBRACE
+
+FlowStep        <- STEP Identifier COLON StepAction CompensateClause?
+StepAction      <- CapabilityRef / Expression
+CapabilityRef   <- Identifier LPAREN ArgList RPAREN
+ArgList         <- Expression (COMMA Expression)*
+CompensateClause <- COMPENSATE COLON StepAction
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# IMPORT
+# Cross-system references.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+ImportDecl      <- IMPORT Identifier FROM StringLiteral
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# TYPE EXPRESSIONS
+# Structural type system â€” no nominal subtyping.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+TypeExpr        <- GenericType / PrimitiveType / EntityRef / TupleType / UnionType
+GenericType     <- TypeName LANGLE TypeExpr (COMMA TypeExpr)* RANGLE
+TupleType       <- LPAREN TypeExpr (COMMA TypeExpr)+ RPAREN
+UnionType       <- TypeExpr (PIPE TypeExpr)+
+PrimitiveType   <- STRING / UINT / INT / FLOAT / BOOL / TIMESTAMP / UUID / BYTES / MAP / JSON_T
+TypeName        <- SET / LIST / OPTIONAL / MAP / RESULT
+EntityRef       <- Identifier
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# EXPRESSIONS
+# Pure, side-effect-free expressions for constraints and derived values.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Expression      <- TernaryExpr
+TernaryExpr     <- LogicalExpr (QUESTION Expression COLON Expression)?
+LogicalExpr     <- CompareExpr ((AND / OR) CompareExpr)*
+CompareExpr     <- AdditiveExpr ((EQ / NEQ / LT / GT / LTE / GTE / IN / CONTAINS) AdditiveExpr)?
+AdditiveExpr    <- MultiExpr ((PLUS / MINUS) MultiExpr)*
+MultiExpr       <- UnaryExpr ((STAR / SLASH / PERCENT) UnaryExpr)*
+UnaryExpr       <- (NOT / MINUS)? PrimaryExpr
+PrimaryExpr     <- Literal / FieldRef / FuncCall / LPAREN Expression RPAREN
+
+ComparisonExpr  <- FieldRef (EQ / NEQ / LT / GT / LTE / GTE) Expression
+MembershipExpr  <- FieldRef IN Expression
+UniquenessExpr  <- FieldRef DOT UNIQUE_KW
+CustomExpr      <- Identifier LPAREN ArgList RPAREN
+
+FieldRef        <- Identifier (DOT Identifier)*
+FieldRefList    <- FieldRef (COMMA FieldRef)*
+FuncCall        <- Identifier LPAREN ArgList? RPAREN
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# LITERALS
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Literal         <- StringLiteral / IntLiteral / FloatLiteral / BoolLiteral
+                 / DurationLiteral / NoneLiteral / ListLiteral / MapLiteral
+
+StringLiteral   <- DQUOTE (!DQUOTE (EscapeSeq / .))* DQUOTE
+IntLiteral      <- [0-9]+
+FloatLiteral    <- [0-9]+ DOT [0-9]+
+BoolLiteral     <- TRUE / FALSE
+DurationLiteral <- IntLiteral DurationUnit
+DurationUnit    <- 'ms' / 's' / 'm' / 'h' / 'd'
+Duration        <- DurationLiteral
+NoneLiteral     <- NONE_LIT
+ListLiteral     <- LBRACKET (Expression (COMMA Expression)*)? RBRACKET
+MapLiteral      <- LBRACE (MapEntry (COMMA MapEntry)*)? RBRACE
+MapEntry        <- (Identifier / StringLiteral) COLON Expression
+
+DomainLiteral   <- Identifier (UNDERSCORE Identifier)*
+
+EscapeSeq       <- BACKSLASH [nrt"\\]
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# LEXICAL RULES
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Identifier      <- !Keyword [a-zA-Z_] [a-zA-Z0-9_]*  Spacing
+
+# Keywords (reserved â€” cannot be used as identifiers)
+Keyword         <- ( SYSTEM / ENTITY / CAPABILITY / CHANNEL / STORE / EVENT
+                   / CONSTRAINT / POLICY / FLOW / IMPORT / FROM
+                   / OWNS / CONSTRAINTS / STATES / AUTH / RELATION / INDEX / DERIVED
+                   / REQUIRES / EFFECTS / EMITS / SYNC / TIMEOUT / RETRY / IDEMPOTENT
+                   / TRANSPORT / ORDERING / PARTICIPANTS / PERSISTENCE / FILTER / MAX_SIZE
+                   / ENGINE / SCHEMA / RETENTION / PARTITION / REPLICAS
+                   / PAYLOAD / DELIVERY / TTL
+                   / RATE_LIMIT / ACCESS / AUDIT / ENCRYPTION
+                   / STEP / COMPENSATE
+                   / DOMAIN / PER
+                   / HAS_ONE / HAS_MANY / BELONGS_TO / MANY_TO_MANY
+                   / JWT / OAUTH2 / APIKEY / SESSION
+                   / WEBSOCKET / SSE / POLLING / GRPC_STREAM
+                   / CAUSAL / FIFO / TOTAL / UNORDERED
+                   / POSTGRESQL / REDIS / MONGODB / SQLITE / S3 / DYNAMODB
+                   / AT_LEAST_ONCE / AT_MOST_ONCE / EXACTLY_ONCE
+                   / AT_REST / IN_TRANSIT / BOTH
+                   / REALTIME / EVENTUAL / BATCH / TRANSACTIONAL
+                   / MAX_ATTEMPTS / BACKOFF / INTERVAL
+                   / STRING / UINT / INT / FLOAT / BOOL / TIMESTAMP / UUID / BYTES / MAP / JSON_T
+                   / SET / LIST / OPTIONAL / RESULT
+                   / TRUE / FALSE / NONE_LIT
+                   / AND / OR / NOT / IN / CONTAINS
+                   ) ![a-zA-Z0-9_]
+
+# â”€â”€â”€ Keyword Terminals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+SYSTEM          <- 'system'         Spacing
+ENTITY          <- 'entity'         Spacing
+CAPABILITY      <- 'capability'     Spacing
+CHANNEL         <- 'channel'        Spacing
+STORE           <- 'store'          Spacing
+EVENT           <- 'event'          Spacing
+CONSTRAINT      <- 'constraint'     Spacing
+POLICY          <- 'policy'         Spacing
+FLOW            <- 'flow'           Spacing
+IMPORT          <- 'import'         Spacing
+FROM            <- 'from'           Spacing
+DOMAIN          <- 'domain'         Spacing
+
+OWNS            <- 'owns'           Spacing
+CONSTRAINTS     <- 'constraints'    Spacing
+STATES          <- 'states'         Spacing
+AUTH            <- 'auth'           Spacing
+RELATION        <- 'relation'       Spacing
+INDEX           <- 'index'          Spacing
+DERIVED         <- 'derived'        Spacing
+
+REQUIRES        <- 'requires'       Spacing
+EFFECTS         <- 'effects'        Spacing
+EMITS           <- 'emits'          Spacing
+SYNC            <- 'sync'           Spacing
+TIMEOUT         <- 'timeout'        Spacing
+RETRY           <- 'retry'          Spacing
+IDEMPOTENT      <- 'idempotent'     Spacing
+
+TRANSPORT       <- 'transport'      Spacing
+ORDERING        <- 'ordering'       Spacing
+PARTICIPANTS    <- 'participants'   Spacing
+PERSISTENCE     <- 'persistence'    Spacing
+FILTER          <- 'filter'         Spacing
+MAX_SIZE        <- 'max_size'       Spacing
+
+ENGINE          <- 'engine'         Spacing
+SCHEMA          <- 'schema'         Spacing
+RETENTION       <- 'retention'      Spacing
+PARTITION       <- 'partition'      Spacing
+REPLICAS        <- 'replicas'       Spacing
+
+PAYLOAD         <- 'payload'        Spacing
+DELIVERY        <- 'delivery'       Spacing
+TTL             <- 'ttl'            Spacing
+
+RATE_LIMIT      <- 'rate_limit'     Spacing
+ACCESS          <- 'access'         Spacing
+AUDIT           <- 'audit'          Spacing
+ENCRYPTION      <- 'encryption'     Spacing
+
+STEP            <- 'step'           Spacing
+COMPENSATE      <- 'compensate'     Spacing
+PER             <- 'per'            Spacing
+
+HAS_ONE         <- 'has_one'        Spacing
+HAS_MANY        <- 'has_many'       Spacing
+BELONGS_TO      <- 'belongs_to'     Spacing
+MANY_TO_MANY    <- 'many_to_many'   Spacing
+
+JWT             <- 'jwt'            Spacing
+OAUTH2          <- 'oauth2'         Spacing
+APIKEY          <- 'apikey'         Spacing
+SESSION         <- 'session'        Spacing
+NONE            <- 'none'           Spacing
+
+WEBSOCKET       <- 'websocket'      Spacing
+SSE             <- 'sse'            Spacing
+POLLING         <- 'polling'        Spacing
+GRPC_STREAM     <- 'grpc_stream'    Spacing
+
+CAUSAL          <- 'causal'         Spacing
+FIFO            <- 'fifo'           Spacing
+TOTAL           <- 'total'          Spacing
+UNORDERED       <- 'unordered'      Spacing
+
+POSTGRESQL      <- 'postgresql'     Spacing
+REDIS           <- 'redis'          Spacing
+MONGODB         <- 'mongodb'        Spacing
+SQLITE          <- 'sqlite'         Spacing
+S3              <- 's3'             Spacing
+DYNAMODB        <- 'dynamodb'       Spacing
+
+AT_LEAST_ONCE   <- 'at_least_once'  Spacing
+AT_MOST_ONCE    <- 'at_most_once'   Spacing
+EXACTLY_ONCE    <- 'exactly_once'   Spacing
+
+AT_REST         <- 'at_rest'        Spacing
+IN_TRANSIT      <- 'in_transit'     Spacing
+BOTH            <- 'both'           Spacing
+NONE_LIT        <- 'none'           Spacing
+
+REALTIME        <- 'realtime'       Spacing
+EVENTUAL        <- 'eventual'       Spacing
+BATCH           <- 'batch'          Spacing
+TRANSACTIONAL   <- 'transactional'  Spacing
+
+MAX_ATTEMPTS    <- 'max_attempts'   Spacing
+BACKOFF         <- 'backoff'        Spacing
+INTERVAL        <- 'interval'       Spacing
+
+STRING          <- 'string'         Spacing
+UINT            <- 'uint'           Spacing
+INT             <- 'int'            Spacing
+FLOAT           <- 'float'          Spacing
+BOOL            <- 'bool'           Spacing
+TIMESTAMP       <- 'timestamp'      Spacing
+UUID            <- 'uuid'           Spacing
+BYTES           <- 'bytes'          Spacing
+MAP             <- 'map'            Spacing
+JSON_T          <- 'json'           Spacing
+SET             <- 'set'            Spacing
+LIST            <- 'list'           Spacing
+OPTIONAL        <- 'optional'       Spacing
+RESULT          <- 'result'         Spacing
+
+TRUE            <- 'true'           Spacing
+FALSE           <- 'false'          Spacing
+
+AND             <- 'and'            Spacing
+OR              <- 'or'             Spacing
+NOT             <- 'not'            Spacing
+IN              <- 'in'             Spacing
+CONTAINS        <- 'contains'       Spacing
+UNIQUE_KW       <- 'unique'         Spacing
+
+# â”€â”€â”€ Operator Terminals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+LBRACE          <- '{'              Spacing
+RBRACE          <- '}'              Spacing
+LBRACKET        <- '['              Spacing
+RBRACKET        <- ']'              Spacing
+LPAREN          <- '('              Spacing
+RPAREN          <- ')'              Spacing
+LANGLE          <- '<'              Spacing
+RANGLE          <- '>'              Spacing
+COLON           <- ':'              Spacing
+COMMA           <- ','              Spacing
+DOT             <- '.'              Spacing
+DOTDOT          <- '..'             Spacing
+ARROW           <- '->'             Spacing
+PIPE            <- '|'              Spacing
+EQUALS          <- '='              Spacing
+EQ              <- '=='             Spacing
+NEQ             <- '!='             Spacing
+LT              <- '<'  !'='        Spacing
+GT              <- '>'  !'='        Spacing
+LTE             <- '<='             Spacing
+GTE             <- '>='             Spacing
+PLUS            <- '+'              Spacing
+MINUS           <- '-'  !'>'        Spacing
+STAR            <- '*'              Spacing
+SLASH           <- '/'              Spacing
+PERCENT         <- '%'              Spacing
+PLUSEQ          <- '+='             Spacing
+MINUSEQ         <- '-='             Spacing
+APPENDEQ        <- '<<='           Spacing
+QUESTION        <- '?'              Spacing
+UNDERSCORE      <- '_'
+DQUOTE          <- '"'
+BACKSLASH       <- '\\'
+
+# â”€â”€â”€ Spacing & Comments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+Spacing         <- (WhiteSpace / Comment)*
+WhiteSpace      <- [ \t\r\n]
+Comment         <- LineComment / BlockComment
+LineComment     <- '//' (![\r\n] .)* [\r\n]?
+BlockComment    <- '/*' (!'*/' .)* '*/'
+
+EndOfFile       <- !.

@@ -11,6 +11,13 @@ vscode-ext/out/
 *.js.map
 *.d.ts.map
 
+# ─── Compiled JS/DTS artifacts in src/ (should only be in dist/) ─────────────
+# These appear when ts-node or tsc emits into the source directory by mistake.
+compiler/src/*.js
+compiler/src/*.d.ts
+compiler/src/**/*.js
+compiler/src/**/*.d.ts
+
 # ─── Generated output (bone compile produces this) ───────────────────────────
 examples/*/output/
 examples/output/
@@ -24,11 +31,15 @@ examples/marketplace/run_tests.ts
 
 # ─── Python scripts used during development ──────────────────────────────────
 lsp/src/gen_server*.py
+compiler/src/*.py
 
 # ─── Environment files ───────────────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
+# Generated project .env files (contain local DB credentials)
+examples/*/output/.env
+examples/marketplace/output/.env
 
 # ─── Logs ────────────────────────────────────────────────────────────────────
 *.log
