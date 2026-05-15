@@ -1,0 +1,44 @@
+{
+  "name": "bonescript-vscode",
+  "displayName": "BoneScript Language Support",
+  "description": "Syntax highlighting, diagnostics, completions, hover, go-to-definition, and outline for BoneScript (.bone) files",
+  "version": "0.2.0",
+  "publisher": "bonescript",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "bone",
+        "aliases": ["BoneScript", "bone"],
+        "extensions": [".bone"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "bone",
+        "scopeName": "source.bone",
+        "path": "./syntaxes/bone.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "package": "npx vsce package --no-dependencies",
+    "install-ext": "code --install-extension bonescript-vscode-0.2.0.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.85.0",
+    "@types/node": "18.19.0",
+    "typescript": "5.3.3",
+    "@vscode/vsce": "2.22.0"
+  }
+}

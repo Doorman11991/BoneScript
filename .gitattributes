@@ -1,0 +1,6 @@
+# Normalize line endings to LF in the repo, check out as-is on all platforms
+* text=auto eol=lf
+
+# Force binary treatment for built artifacts and lock files
+*.vsix binary
+package-lock.json text eol=lf

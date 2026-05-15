@@ -1,0 +1,68 @@
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build outputs ───────────────────────────────────────────────────────────
+# Note: compiler/dist/ is kept because the LSP depends on it as a local package.
+# Once the compiler is published to npm, add compiler/dist/ here.
+lsp/dist/
+vscode-ext/out/
+*.js.map
+*.d.ts.map
+
+# ─── Compiled JS/DTS artifacts in src/ (should only be in dist/) ─────────────
+# These appear when ts-node or tsc emits into the source directory by mistake.
+compiler/src/*.js
+compiler/src/*.d.ts
+compiler/src/**/*.js
+compiler/src/**/*.d.ts
+
+# ─── Generated output (bone compile produces this) ───────────────────────────
+examples/*/output/
+examples/output/
+
+# ─── Test scratch files ───────────────────────────────────────────────────────
+examples/test_*.bone
+examples/marketplace/run_tests.ts
+
+# ─── VS Code extension package ───────────────────────────────────────────────
+*.vsix
+
+# ─── Python scripts used during development ──────────────────────────────────
+lsp/src/gen_server*.py
+compiler/src/*.py
+
+# ─── Environment files ───────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# Generated project .env files (contain local DB credentials and secrets)
+examples/**/.env
+examples/**/output/.env
+examples/marketplace/output/.env
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Editor files ────────────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# ─── TypeScript cache ────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── Coverage ────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/

@@ -1,0 +1,272 @@
+// BoneScript Example: Multiplayer Inventory Platform
+// This is a complete, valid BoneScript program.
+
+system InventoryPlatform {
+  domain: multiplayer_game
+
+  // â”€â”€â”€ Entities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  entity Player {
+    owns: [
+      username: string,
+      email: string,
+      score: uint,
+      level: uint,
+      inventory: set<Item>
+    ]
+    constraints: [
+      username.unique,
+      username.length in 3..32,
+      email.unique,
+      score >= 0,
+      level >= 1,
+      inventory.size <= 500
+    ]
+    states: active -> suspended -> banned | deleted
+    auth: jwt
+    index: [username, email]
+  }
+
+  entity Item {
+    owns: [
+      name: string,
+      quantity: uint,
+      rarity: string,
+      tradeable: bool,
+      owner_id: uuid,
+      metadata: json
+    ]
+    constraints: [
+      quantity >= 0,
+      quantity <= 9999,
+      name.length in 1..128,
+      rarity in ["common", "uncommon", "rare", "epic", "legendary"]
+    ]
+    states: available -> reserved -> consumed | deleted
+    index: [owner_id, rarity]
+  }
+
+  entity TradeOffer {
+    owns: [
+      from_player: uuid,
+      to_player: uuid,
+      offered_items: list<uuid>,
+      requested_items: list<uuid>,
+      status: string,
+      expires_at: timestamp
+    ]
+    constraints: [
+      from_player != to_player,
+      offered_items.size >= 1,
+      status in ["pending", "accepted", "rejected", "expired", "cancelled"]
+    ]
+    states: pending -> accepted | rejected | expired | cancelled
+    index: [from_player, to_player, status]
+  }
+
+  // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  store PlayerStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      username: string,
+      email: string,
+      password_hash: string,
+      score: uint,
+      level: uint,
+      state: string,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    partition: id
+    replicas: 2
+  }
+
+  store ItemStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      name: string,
+      quantity: uint,
+      rarity: string,
+      tradeable: bool,
+      owner_id: uuid,
+      state: string,
+      metadata: json,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    partition: owner_id
+    replicas: 2
+  }
+
+  store SessionStore {
+    engine: redis
+    schema: {
+      token: string,
+      player_id: uuid,
+      expires_at: timestamp
+    }
+    retention: 24h
+  }
+
+  // â”€â”€â”€ Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  event ItemTraded {
+    payload: {
+      trade_id: uuid,
+      from_player: uuid,
+      to_player: uuid,
+      items_transferred: list<uuid>,
+      traded_at: timestamp
+    }
+    delivery: exactly_once
+    ttl: 7d
+  }
+
+  event PlayerLeveledUp {
+    payload: {
+      player_id: uuid,
+      old_level: uint,
+      new_level: uint,
+      leveled_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 30d
+  }
+
+  event TradeOfferCreated {
+    payload: {
+      offer_id: uuid,
+      from_player: uuid,
+      to_player: uuid,
+      created_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 7d
+  }
+
+  // â”€â”€â”€ Capabilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  capability create_trade(from: Player, to: Player, items: list<Item>) {
+    requires: [
+      from.state == "active",
+      to.state == "active",
+      from != to,
+      items.size >= 1,
+      items.size <= 10
+    ]
+    effects: [
+      items.state = "reserved"
+    ]
+    emits: TradeOfferCreated(from.id, to.id)
+    sync: transactional
+    timeout: 30s
+    idempotent: false
+  }
+
+  capability accept_trade(trade: TradeOffer, acceptor: Player) {
+    requires: [
+      trade.status == "pending",
+      trade.to_player == acceptor.id,
+      acceptor.state == "active",
+      trade.expires_at > now()
+    ]
+    effects: [
+      trade.status = "accepted",
+      trade.offered_items.owner_id = trade.to_player,
+      trade.requested_items.owner_id = trade.from_player
+    ]
+    emits: ItemTraded(trade.id, trade.from_player, trade.to_player)
+    sync: transactional
+    timeout: 30s
+    idempotent: true
+  }
+
+  capability award_xp(player: Player, amount: uint) {
+    requires: [
+      player.state == "active",
+      amount > 0,
+      amount <= 10000
+    ]
+    effects: [
+      player.score += amount,
+      player.level = calculate_level(player.score + amount)
+    ]
+    emits: PlayerLeveledUp(player.id, player.level, calculate_level(player.score + amount))
+    sync: eventual
+    timeout: 5s
+    idempotent: false
+  }
+
+  capability consume_item(player: Player, item: Item) {
+    requires: [
+      player.state == "active",
+      item.owner_id == player.id,
+      item.state == "available",
+      item.quantity > 0
+    ]
+    effects: [
+      item.quantity -= 1
+    ]
+    sync: transactional
+    timeout: 10s
+    idempotent: false
+  }
+
+  // â”€â”€â”€ Channels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  channel game_lobby {
+    transport: websocket
+    ordering: causal
+    participants: set<Player>
+    persistence: last_100
+    max_size: 10000
+  }
+
+  channel trade_notifications {
+    transport: websocket
+    ordering: fifo
+    participants: set<Player>
+    persistence: last_50
+    filter: participant.id == event.to_player
+  }
+
+  // â”€â”€â”€ Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  policy api_security {
+    rate_limit: 100 per 1m
+    access: [player, admin]
+    audit: true
+    encryption: both
+  }
+
+  policy trade_limits {
+    rate_limit: 10 per 1h
+    access: [player]
+    audit: true
+    encryption: in_transit
+  }
+
+  // â”€â”€â”€ Flows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  flow execute_trade {
+    step validate: create_trade(offer.from, offer.to, offer.items)
+      compensate: cancel_trade(offer)
+
+    step lock_items: reserve_items(offer.items)
+      compensate: release_items(offer.items)
+
+    step transfer: accept_trade(offer, offer.to)
+      compensate: revert_transfer(offer)
+
+    step notify: emit_trade_complete(offer)
+      compensate: emit_trade_reverted(offer)
+  }
+
+  // â”€â”€â”€ Cross-Entity Constraints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  constraint max_active_trades: Player.active_trades <= 5
+  constraint trade_value_limit: TradeOffer.total_value <= 1000000
+}

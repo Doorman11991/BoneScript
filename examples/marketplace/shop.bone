@@ -1,0 +1,364 @@
+// BoneScript Marketplace — SimpleShop
+// A small but complete marketplace: sellers list items, buyers purchase them.
+// Exercises: entities, state machines, capabilities, events, flows, relations, policies.
+
+system SimpleShop {
+  domain: marketplace
+
+  // ─── Entities ──────────────────────────────────────────────────────────────
+
+  entity Seller {
+    owns: [
+      name: string,
+      email: string,
+      balance: uint,
+      rating: float
+    ]
+    constraints: [
+      name.length in 1..100,
+      email.unique,
+      balance >= 0,
+      rating >= 0
+    ]
+    states: active -> suspended | banned
+    auth: jwt
+    index: [email]
+  }
+
+  entity Listing {
+    owns: [
+      seller_id: uuid,
+      title: string,
+      description: string,
+      price: uint,
+      stock: uint,
+      category: string
+    ]
+    constraints: [
+      title.length in 1..200,
+      price > 0,
+      stock >= 0,
+      category in ["electronics", "clothing", "books", "home", "sports", "other"]
+    ]
+    states: draft -> active -> sold_out | archived
+    index: [seller_id, category]
+    relation seller: belongs_to Seller
+  }
+
+  entity Buyer {
+    owns: [
+      name: string,
+      email: string,
+      balance: uint
+    ]
+    constraints: [
+      name.length in 1..100,
+      email.unique,
+      balance >= 0
+    ]
+    states: active -> suspended
+    auth: jwt
+    index: [email]
+  }
+
+  entity Order {
+    owns: [
+      buyer_id: uuid,
+      listing_id: uuid,
+      seller_id: uuid,
+      quantity: uint,
+      unit_price: uint,
+      total: uint,
+      status: string
+    ]
+    constraints: [
+      quantity >= 1,
+      unit_price > 0,
+      total > 0,
+      status in ["pending", "paid", "shipped", "delivered", "cancelled", "refunded"]
+    ]
+    states: pending -> paid -> shipped -> delivered | cancelled | refunded
+    index: [buyer_id, seller_id, status]
+    relation listing: belongs_to Listing
+    relation buyer: belongs_to Buyer
+  }
+
+  entity Review {
+    owns: [
+      order_id: uuid,
+      buyer_id: uuid,
+      seller_id: uuid,
+      rating: uint,
+      comment: string
+    ]
+    constraints: [
+      rating >= 1,
+      rating <= 5,
+      comment.length in 1..1000
+    ]
+    index: [seller_id, buyer_id]
+  }
+
+  // ─── Stores ────────────────────────────────────────────────────────────────
+
+  store SellerStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      name: string,
+      email: string,
+      balance: uint,
+      rating: float,
+      state: string,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    replicas: 1
+  }
+
+  store ListingStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      seller_id: uuid,
+      title: string,
+      description: string,
+      price: uint,
+      stock: uint,
+      category: string,
+      state: string,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    partition: seller_id
+    replicas: 1
+  }
+
+  store BuyerStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      name: string,
+      email: string,
+      balance: uint,
+      state: string,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    replicas: 1
+  }
+
+  store OrderStore {
+    engine: postgresql
+    schema: {
+      id: uuid,
+      buyer_id: uuid,
+      listing_id: uuid,
+      seller_id: uuid,
+      quantity: uint,
+      unit_price: uint,
+      total: uint,
+      status: string,
+      state: string,
+      created_at: timestamp,
+      updated_at: timestamp
+    }
+    partition: buyer_id
+    replicas: 1
+  }
+
+  // ─── Events ────────────────────────────────────────────────────────────────
+
+  event OrderPlaced {
+    payload: {
+      order_id: uuid,
+      buyer_id: uuid,
+      listing_id: uuid,
+      seller_id: uuid,
+      quantity: uint,
+      total: uint,
+      placed_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 30d
+  }
+
+  event PaymentProcessed {
+    payload: {
+      order_id: uuid,
+      buyer_id: uuid,
+      seller_id: uuid,
+      amount: uint,
+      processed_at: timestamp
+    }
+    delivery: exactly_once
+    ttl: 90d
+  }
+
+  event OrderShipped {
+    payload: {
+      order_id: uuid,
+      seller_id: uuid,
+      shipped_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 30d
+  }
+
+  event OrderCancelled {
+    payload: {
+      order_id: uuid,
+      reason: string,
+      cancelled_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 30d
+  }
+
+  event ReviewPosted {
+    payload: {
+      review_id: uuid,
+      seller_id: uuid,
+      rating: uint,
+      posted_at: timestamp
+    }
+    delivery: at_least_once
+    ttl: 90d
+  }
+
+  // ─── Capabilities ──────────────────────────────────────────────────────────
+
+  capability publish_listing(seller: Seller, listing: Listing) {
+    requires: [
+      seller.state == "active",
+      listing.state == "draft",
+      listing.seller_id == seller.id,
+      listing.stock > 0
+    ]
+    effects: [
+      listing.state = "active"
+    ]
+    sync: transactional
+    timeout: 10s
+  }
+
+  capability archive_listing(seller: Seller, listing: Listing) {
+    requires: [
+      seller.state == "active",
+      listing.seller_id == seller.id,
+      listing.state == "active"
+    ]
+    effects: [
+      listing.state = "archived"
+    ]
+    sync: transactional
+    timeout: 10s
+  }
+
+  capability place_order(buyer: Buyer, listing: Listing, quantity: uint) {
+    requires: [
+      buyer.state == "active",
+      listing.state == "active",
+      listing.stock >= quantity,
+      quantity >= 1,
+      buyer.balance >= listing.price * quantity
+    ]
+    effects: [
+      listing.stock -= quantity,
+      buyer.balance -= listing.price * quantity
+    ]
+    emits: OrderPlaced
+    sync: transactional
+    timeout: 30s
+    idempotent: false
+  }
+
+  capability process_payment(order: Order, buyer: Buyer) {
+    requires: [
+      order.status == "pending",
+      order.buyer_id == buyer.id,
+      buyer.balance >= order.total
+    ]
+    effects: [
+      order.status = "paid",
+      buyer.balance -= order.total
+    ]
+    emits: PaymentProcessed
+    sync: transactional
+    timeout: 30s
+    idempotent: true
+  }
+
+  capability ship_order(seller: Seller, order: Order) {
+    requires: [
+      order.status == "paid",
+      order.seller_id == seller.id,
+      seller.state == "active"
+    ]
+    effects: [
+      order.status = "shipped"
+    ]
+    emits: OrderShipped
+    sync: transactional
+    timeout: 10s
+  }
+
+  capability cancel_order(order: Order) {
+    requires: [
+      order.status == "pending"
+    ]
+    effects: [
+      order.status = "cancelled"
+    ]
+    emits: OrderCancelled
+    sync: transactional
+    timeout: 10s
+  }
+
+  capability post_review(buyer: Buyer, order: Order, rating: uint, comment: string) {
+    requires: [
+      order.status == "delivered",
+      order.buyer_id == buyer.id,
+      rating >= 1,
+      rating <= 5
+    ]
+    effects: []
+    emits: ReviewPosted
+    sync: eventual
+    timeout: 10s
+  }
+
+  // ─── Checkout Flow (Saga) ──────────────────────────────────────────────────
+
+  flow checkout {
+    step validate: place_order(buyer, listing, quantity)
+      compensate: cancel_order(order)
+
+    step pay: process_payment(order, buyer)
+      compensate: cancel_order(order)
+
+    step confirm: ship_order(seller, order)
+      compensate: cancel_order(order)
+  }
+
+  // ─── Policies ──────────────────────────────────────────────────────────────
+
+  policy api_limits {
+    rate_limit: 200 per 1m
+    access: [buyer, seller, admin]
+    audit: true
+    encryption: both
+  }
+
+  policy order_limits {
+    rate_limit: 20 per 1m
+    access: [buyer]
+    audit: true
+    encryption: in_transit
+  }
+
+  // ─── Cross-Entity Constraints ──────────────────────────────────────────────
+
+  constraint listing_price_limit: Listing.price <= 1000000
+  constraint order_quantity_limit: Order.quantity <= 100
+}

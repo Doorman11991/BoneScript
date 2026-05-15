@@ -1,0 +1,89 @@
+{
+  "name": "BoneScript",
+  "scopeName": "source.bone",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#declarations" },
+    { "include": "#operators" },
+    { "include": "#constants" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.bone", "match": "//.*$" },
+        { "name": "comment.block.bone", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.bone", "begin": "\"", "end": "\"", "patterns": [
+          { "name": "constant.character.escape.bone", "match": "\\\\." }
+        ]}
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "name": "constant.numeric.duration.bone", "match": "\\b\\d+(ms|s|m|h|d)\\b" },
+        { "name": "constant.numeric.float.bone", "match": "\\b\\d+\\.\\d+\\b" },
+        { "name": "constant.numeric.integer.bone", "match": "\\b\\d+\\b" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.bone",
+          "match": "\\b(system|entity|capability|channel|store|event|constraint|policy|flow|import|from)\\b"
+        },
+        {
+          "name": "keyword.other.bone",
+          "match": "\\b(owns|constraints|states|auth|relation|index|derived|requires|effects|emits|sync|timeout|retry|idempotent|transport|ordering|participants|persistence|filter|max_size|engine|schema|retention|partition|replicas|payload|delivery|ttl|rate_limit|access|audit|encryption|step|compensate|per|domain)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.bone",
+          "match": "\\b(and|or|not|in|contains)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.bone",
+          "match": "\\b(string|uint|int|float|bool|timestamp|uuid|bytes|json)\\b"
+        },
+        {
+          "name": "support.type.generic.bone",
+          "match": "\\b(set|list|map|optional|result)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "entity.name.type.bone",
+          "match": "(?<=\\b(system|entity|store|event|channel|policy|flow|capability)\\s+)\\w+"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.arrow.bone", "match": "->" },
+        { "name": "keyword.operator.comparison.bone", "match": "(==|!=|<=|>=|<|>)" },
+        { "name": "keyword.operator.assignment.bone", "match": "(\\+=|-=|<<=|=)" },
+        { "name": "keyword.operator.range.bone", "match": "\\.\\." }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        { "name": "constant.language.boolean.bone", "match": "\\b(true|false|none)\\b" },
+        {
+          "name": "constant.language.enum.bone",
+          "match": "\\b(jwt|oauth2|apikey|session|websocket|sse|polling|grpc_stream|causal|fifo|total|unordered|postgresql|redis|mongodb|sqlite|s3|dynamodb|at_least_once|at_most_once|exactly_once|at_rest|in_transit|both|realtime|eventual|batch|transactional|has_one|has_many|belongs_to|many_to_many|full)\\b"
+        }
+      ]
+    }
+  }
+}

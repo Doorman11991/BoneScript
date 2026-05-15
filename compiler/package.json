@@ -1,0 +1,52 @@
+{
+  "name": "bonescript-compiler",
+  "version": "0.2.1",
+  "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "bonec": "dist/cli.js"
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*.ts",
+    "!src/test.ts",
+    "!src/test_typechecker.ts",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "ts-node src/cli.ts",
+    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts"
+  },
+  "keywords": [
+    "bonescript",
+    "compiler",
+    "code-generation",
+    "backend",
+    "declarative",
+    "typescript",
+    "postgresql",
+    "express",
+    "dsl"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dantheman181/bonescript.git"
+  },
+  "homepage": "https://github.com/dantheman181/bonescript#readme",
+  "bugs": {
+    "url": "https://github.com/dantheman181/bonescript/issues"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.0",
+    "typescript": "5.3.3",
+    "ts-node": "10.9.2"
+  }
+}
