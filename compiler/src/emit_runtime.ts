@@ -310,17 +310,30 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
   lines.push(`});`);
   lines.push(``);
 
-  // UPDATE — with state machine enforcement
+  // UPDATE — with state machine enforcement and column allowlist (prevents SQL injection)
   lines.push(`// UPDATE`);
   lines.push(`${toCamelCase(routeBase)}Router.put("/:id", requireAuth, async (req: Request, res: Response) => {`);
-  lines.push(`  const fields = { ...req.body };`);
+  // Emit compile-time allowlist of valid column names from the model
+  const updatableFields = entityModel.fields.filter(f =>
+    f.name !== "id" && f.name !== "created_at" && f.name !== "updated_at"
+  );
+  const allowedCols = updatableFields.map(f => `"${f.name}"`).join(", ");
+  lines.push(`  // Only allow known columns — prevents SQL injection via field name interpolation`);
+  lines.push(`  const ALLOWED_COLUMNS = new Set([${allowedCols}]);`);
+  lines.push(`  const rawFields = { ...req.body };`);
+  lines.push(`  const fields: Record<string, unknown> = {};`);
+  lines.push(`  for (const key of Object.keys(rawFields)) {`);
+  lines.push(`    if (ALLOWED_COLUMNS.has(key)) fields[key] = rawFields[key];`);
+  lines.push(`  }`);
+  lines.push(`  if (Object.keys(fields).length === 0) {`);
+  lines.push(`    return res.status(400).json({ error: { code: "NO_VALID_FIELDS", message: "No valid fields to update" } });`);
+  lines.push(`  }`);
   if (mod.state_machines.length > 0) {
     const sm = mod.state_machines[0];
     lines.push(`  // State machine enforcement`);
     lines.push(`  if (fields.state !== undefined) {`);
     lines.push(`    const current = await queryOne<{ state: string }>(\`SELECT state FROM ${tableName} WHERE id = $1\`, [req.params.id]);`);
     lines.push(`    if (!current) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });`);
-    lines.push(`    // Find the trigger for this state transition`);
     lines.push(`    const trigger = \`\${current.state}_to_\${fields.state}\`;`);
     lines.push(`    const tr = transition${sm.entity}(current.state as any, trigger);`);
     lines.push(`    if (!tr.ok) return res.status(422).json({ error: { code: "INVALID_TRANSITION", message: \`Cannot transition from \${current.state} to \${fields.state}\` } });`);
@@ -582,8 +595,27 @@ export function emitIndex(system: IR.IRSystem): string {
   lines.push(`app.use(authMiddleware);`);
 
   const gw = system.modules.find(m => m.kind === "gateway");
-  const rateVal = gw?.config["rate_limit"] || 1000;
-  lines.push(`app.use(rateLimit({ windowMs: 60000, max: ${rateVal} }));`);
+  const rateVal = gw?.config["rate_limit"] || 300;
+  // Global rate limit — configurable via RATE_LIMIT_MAX env var
+  lines.push(`// Global rate limit (default ${rateVal} req/min, override with RATE_LIMIT_MAX env var)`);
+  lines.push(`const __globalRateLimit = rateLimit({`);
+  lines.push(`  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000"),`);
+  lines.push(`  max: parseInt(process.env.RATE_LIMIT_MAX || "${rateVal}"),`);
+  lines.push(`  standardHeaders: true,`);
+  lines.push(`  legacyHeaders: false,`);
+  lines.push(`  message: { error: { code: "RATE_LIMITED", message: "Too many requests, please slow down." } },`);
+  lines.push(`});`);
+  lines.push(`app.use(__globalRateLimit);`);
+  lines.push(``);
+  // Tighter limit on auth endpoints to slow brute-force
+  lines.push(`// Strict rate limit on auth endpoints (20 req/min per IP)`);
+  lines.push(`const __authRateLimit = rateLimit({`);
+  lines.push(`  windowMs: 60000,`);
+  lines.push(`  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || "20"),`);
+  lines.push(`  standardHeaders: true,`);
+  lines.push(`  legacyHeaders: false,`);
+  lines.push(`  message: { error: { code: "RATE_LIMITED", message: "Too many auth attempts." } },`);
+  lines.push(`});`);
   lines.push(``);
   // Request timeout middleware
   lines.push(`// Request timeout (default 30s, override per-route)`);
@@ -608,7 +640,11 @@ export function emitIndex(system: IR.IRSystem): string {
     const model = mod.models[0];
     if (!model) continue;
     const routerName = toCamelCase(toSnakeCase(model.name) + "s") + "Router";
-    lines.push(`app.use("/${toSnakeCase(model.name)}s", ${routerName});`);
+    const routePath = `/${toSnakeCase(model.name)}s`;
+    lines.push(`app.use("${routePath}", ${routerName});`);
+    // Apply auth rate limiter to login/register sub-paths
+    lines.push(`app.use("${routePath}/login", __authRateLimit);`);
+    lines.push(`app.use("${routePath}/register", __authRateLimit);`);
   }
   lines.push(``);
 

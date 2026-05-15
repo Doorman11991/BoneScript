@@ -217,6 +217,13 @@ NODE_ENV=development
 # Example: ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 ALLOWED_ORIGINS=
 
+# --- Rate limiting ---
+# Global limit: requests per window per IP (default 300/min)
+RATE_LIMIT_MAX=300
+RATE_LIMIT_WINDOW_MS=60000
+# Auth endpoints (login/register) limit per IP (default 20/min — brute-force protection)
+AUTH_RATE_LIMIT_MAX=20
+
 # --- Event delivery mode ---
 # in_process: in-memory, fast, no durability guarantees (default for development)
 # durable: Postgres-backed transactional outbox (recommended for production)
