@@ -115,7 +115,7 @@ process.on("uncaughtException", (err: Error) => {
   const annotated = annotateBoneError(err, err.stack?.split("\\n")[1]?.match(/\\((.+):\\d+:\\d+\\)/)?.[1] || "");
   console.error("[BoneScript] Unhandled error:");
   console.error(annotated);
-  process.exit(1);
+  // process.exit(1); // disabled - errors should not crash the server
 });
 `;
 }

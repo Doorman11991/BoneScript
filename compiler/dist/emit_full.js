@@ -161,15 +161,35 @@ class FullEmitter {
     }
     emitEnvExample(system) {
         return `# ${system.name} Environment Variables
+# Copy this file to .env and fill in real values. Never commit .env to source control.
+
+# --- Required in production ---
+# Generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+JWT_SECRET=
+
+# --- Database ---
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/${toSnakeCase(system.name)}
+
+# --- Redis (optional, used by some domain templates) ---
 REDIS_URL=redis://localhost:6379
-JWT_SECRET=change-this-in-production
+
+# --- Server ---
 PORT=3000
 NODE_ENV=development
 
-# Event delivery mode: in_process (default) or durable (Postgres-backed outbox)
+# --- CORS ---
+# Comma-separated list of allowed origins. Leave empty to disallow all cross-origin requests.
+# Example: ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+ALLOWED_ORIGINS=
+
+# --- Event delivery mode ---
+# in_process: in-memory, fast, no durability guarantees (default for development)
+# durable: Postgres-backed transactional outbox (recommended for production)
 EVENT_MODE=in_process
 EVENT_WORKER_INTERVAL_MS=1000
+
+# --- Request timeout ---
+REQUEST_TIMEOUT_MS=30000
 `;
     }
     emitDockerCompose(system) {

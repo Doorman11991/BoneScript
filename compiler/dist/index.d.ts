@@ -13,7 +13,6 @@ export { Lowering } from "./lowering";
 export { ConstraintSolver } from "./solver";
 export type { SolverResult } from "./solver";
 export { FullEmitter } from "./emit_full";
-export { Emitter } from "./emitter";
 export type { EmittedFile } from "./emitter";
 export { Verifier } from "./verifier";
 export type { VerifyResult, VerifyIssue } from "./verifier";

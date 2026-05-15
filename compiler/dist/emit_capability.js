@@ -110,8 +110,8 @@ function getEntityFetches(method, mod, system) {
     return fetches;
 }
 function compilePrecondition(expr, indent) {
-    const condition = exprToTs(expr, true); // negated for guard
-    const description = exprToDescription(expr);
+    const condition = exprToTs(expr, true);
+    const description = exprToDescription(expr).replace(/"/g, '\\"');
     return [
         `${indent}if (${condition}) {`,
         `${indent}  return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: ${JSON.stringify(description)} } });`,
@@ -328,7 +328,7 @@ function emitCapabilityBody(method, mod, system, indent = "    ") {
                 effectResults.push(resultVar);
                 lines.push(`${indent}const ${resultVar} = await query(\`${compiled.sql}\`, [${compiled.params.join(", ")}]);`);
                 lines.push(`${indent}if (!${resultVar} || ${resultVar}.length === 0) {`);
-                lines.push(`${indent}  throw new Error("Effect failed: ${compiled.description}");`);
+                lines.push(`${indent}  throw new Error("Effect failed: ${compiled.description.replace(/"/g, '\\"')}");`);
                 lines.push(`${indent}}`);
             }
             else {

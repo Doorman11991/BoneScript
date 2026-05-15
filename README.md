@@ -1,5 +1,8 @@
 # BoneScript
 
+[![npm](https://img.shields.io/npm/v/bonescript-compiler)](https://www.npmjs.com/package/bonescript-compiler)
+[![license](https://img.shields.io/npm/l/bonescript-compiler)](https://github.com/dantheman181/bonescript/blob/main/compiler/LICENSE)
+
 A declarative language that compiles system descriptions into complete, runnable Node.js backends. Write the bones, get the whole skeleton.
 
 ```bone
@@ -25,24 +28,42 @@ system Shop {
 }
 ```
 
-Run `bone compile shop.bone` and get back a running Express API with PostgreSQL, JWT auth, state machine enforcement, transactional SQL, durable events, health checks, migrations, WebSocket support, a Dockerfile, and a GitHub Actions CI pipeline. No LLMs. Deterministic — same input always produces identical output.
+Run `bonec compile shop.bone` and get back a running Express API with PostgreSQL, JWT auth, state machine enforcement, transactional SQL, durable events, health checks, migrations, WebSocket support, a Dockerfile, and a GitHub Actions CI pipeline. No LLMs. Deterministic — same input always produces identical output.
+
+---
+
+## Install
+
+```bash
+npm install -g bonescript-compiler
+```
+
+Or run without installing:
+
+```bash
+npx bonescript-compiler compile shop.bone
+```
+
+Requires Node.js 18 or later.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Install the compiler
-cd compiler && npm install
+# 1. Scaffold a new project
+bonec init my-app --domain saas_platform
 
-# 2. Scaffold a new project
-npx ts-node src/cli.ts init my-app --domain saas_platform --out ../my-app
+# 2. Compile
+bonec compile my-app/my-app.bone
 
-# 3. Compile
-npx ts-node src/cli.ts compile ../my-app/my-app.bone
+# 3. Configure
+cp my-app/output/.env.example my-app/output/.env
+# Edit .env — set JWT_SECRET to a random 48-byte hex string:
+# node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
-# 4. Run it
-cd ../my-app/output
+# 4. Run
+cd my-app/output
 npm install
 docker compose up -d   # starts Postgres + Redis
 npm run migrate
@@ -180,19 +201,19 @@ extension_point calculate_fee(order: Order) {
 
 | Command | Description |
 |---------|-------------|
-| `bone compile <file>` | Full 7-stage compilation → runnable project |
-| `bone check <file>` | Validate without generating code |
-| `bone fmt <file>` | Format in place |
-| `bone watch <file>` | Recompile on save |
-| `bone init <name>` | Scaffold from a domain template |
-| `bone diff <old> <new>` | Show schema migration diff |
-| `bone test [output-dir]` | Run generated regression tests |
-| `bone debug <file>` | Generate source maps |
-| `bone verify-determinism <file>` | Confirm two compilations are identical |
+| `bonec compile <file>` | Full 7-stage compilation → runnable project |
+| `bonec check <file>` | Validate without generating code |
+| `bonec fmt <file>` | Format in place |
+| `bonec watch <file>` | Recompile on save |
+| `bonec init <name>` | Scaffold from a domain template |
+| `bonec diff <old> <new>` | Show schema migration diff |
+| `bonec test [output-dir]` | Run generated regression tests |
+| `bonec debug <file>` | Generate source maps |
+| `bonec verify-determinism <file>` | Confirm two compilations are identical |
 
 ### Domain Templates
 
-`bone init my-app --domain <name>`
+`bonec init my-app --domain <name>`
 
 | Domain | Auth | DB | Sync |
 |--------|------|----|------|
@@ -260,10 +281,14 @@ Every stage is deterministic — same `.bone` file always produces bitwise-ident
 
 ```bash
 cd compiler
-npx ts-node src/test.ts              # lexer + parser + determinism (6 tests)
-npx ts-node src/test_typechecker.ts  # type error detection (7 tests)
-npx ts-node src/cli.ts verify-determinism examples/inventory_platform.bone
+npm test
 ```
+
+---
+
+## Contributing
+
+Issues and PRs welcome at [github.com/dantheman181/bonescript](https://github.com/dantheman181/bonescript).
 
 ---
 
@@ -271,9 +296,9 @@ npx ts-node src/cli.ts verify-determinism examples/inventory_platform.bone
 
 ```
 spec/           Language specification (10 formal documents)
-compiler/       Reference compiler (TypeScript)
+compiler/       Reference compiler (TypeScript) — published as bonescript-compiler on npm
   src/          Source — lexer, parser, type checker, IR, emitters, CLI
-  dist/         Compiled output (required by LSP)
+  dist/         Compiled output
 lsp/            Language Server Protocol server
 vscode-ext/     VS Code extension
 examples/       Example .bone programs
@@ -286,6 +311,6 @@ examples/       Example .bone programs
 
 ## Status
 
-The compiler pipeline is complete and deterministic. The generated code compiles and runs. The VS Code extension provides real-time feedback. Tested against a real marketplace application.
+Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler). The compiler pipeline is complete and deterministic. The generated code compiles and runs. The VS Code extension provides real-time feedback. Tested against a real marketplace application.
 
-Not yet: published to npm, marketplace listing for the extension, end-to-end tests with a live database.
+Not yet: VS Code marketplace listing for the extension, end-to-end tests with a live database.

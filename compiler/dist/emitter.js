@@ -119,6 +119,14 @@ class Emitter {
                 else
                     line += ` DEFAULT ${field.default_value}`;
             }
+            else if (field.name === "created_at" || field.name === "updated_at") {
+                // Always add DEFAULT NOW() for timestamp audit fields
+                line += " DEFAULT NOW()";
+            }
+            else if (field.name === "id" && field.type === "uuid") {
+                // Always add DEFAULT gen_random_uuid() for uuid primary keys
+                line += " DEFAULT gen_random_uuid()";
+            }
             if (field.name === model.primary_key)
                 line += " PRIMARY KEY";
             fieldLines.push(line);

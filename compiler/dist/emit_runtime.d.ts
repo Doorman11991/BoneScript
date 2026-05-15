@@ -6,7 +6,6 @@ import * as IR from "./ir";
 export declare function emitPackageJson(system: IR.IRSystem): string;
 export declare function emitTsConfig(): string;
 export declare function emitDbClient(system: IR.IRSystem): string;
-export declare function emitEventBus(): string;
 export declare function emitAuthMiddleware(system: IR.IRSystem): string;
 export declare function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string;
 export declare function emitStateMachineRuntime(sm: IR.IRStateMachine): string;

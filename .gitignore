@@ -37,8 +37,9 @@ compiler/src/*.py
 .env
 .env.local
 .env.*.local
-# Generated project .env files (contain local DB credentials)
-examples/*/output/.env
+# Generated project .env files (contain local DB credentials and secrets)
+examples/**/.env
+examples/**/output/.env
 examples/marketplace/output/.env
 
 # ─── Logs ────────────────────────────────────────────────────────────────────
