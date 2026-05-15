@@ -99,18 +99,22 @@ output/
 │   ├── index.ts          Express server with all routes wired
 │   ├── db.ts             Postgres connection pool
 │   ├── events.ts         Durable event bus (transactional outbox)
-│   ├── auth.ts           JWT middleware
+│   ├── auth.ts           JWT / OAuth2 / API key middleware (domain-selected)
+│   ├── publishers.ts     Typed event publisher functions
 │   ├── health.ts         /health/live, /health/ready, /health/metrics
-│   ├── logger.ts         Structured logging (spec/10 schema)
+│   ├── logger.ts         Structured logging
 │   ├── metrics.ts        Prometheus-style counters/histograms
 │   ├── failure_rules.ts  Rule-based remediation (no ML)
 │   ├── flows.ts          Saga runtime with backward compensation
 │   ├── websocket.ts      WebSocket server (if channels declared)
 │   ├── routes/           One file per entity — CRUD + capabilities
-│   └── state_machines/   One file per entity with states
+│   ├── state_machines/   One file per entity with states
+│   └── models/           TypeScript interfaces + Zod validators
 ├── migrations/           SQL schemas with indexes, triggers, FK constraints
+├── openapi.json          OpenAPI 3.0 schema
 ├── Dockerfile
 ├── docker-compose.yaml   Postgres + Redis for local dev
+├── k8s/deployment.yaml   Kubernetes deployment manifest
 ├── .github/workflows/    CI/CD pipeline
 └── src/tests.ts          Generated regression tests
 ```
@@ -219,7 +223,7 @@ extension_point calculate_fee(order: Order) {
 |--------|------|----|------|
 | `multiplayer_game` | JWT | Postgres + Redis | realtime |
 | `saas_platform` | OAuth2 | Postgres | eventual |
-| `iot_system` | API key | DynamoDB | eventual |
+| `iot_system` | API key | Postgres | eventual |
 | `social_network` | OAuth2 | Postgres + Redis | eventual |
 | `marketplace` | OAuth2 | Postgres | transactional |
 | `realtime_collaboration` | JWT | Postgres + Redis | realtime |
@@ -295,7 +299,6 @@ Issues and PRs welcome at [github.com/Doorman11991/BoneScript](https://github.co
 ## Project Structure
 
 ```
-spec/           Language specification (10 formal documents)
 compiler/       Reference compiler (TypeScript) — published as bonescript-compiler on npm
   src/          Source — lexer, parser, type checker, IR, emitters, CLI
   dist/         Compiled output
