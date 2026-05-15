@@ -7,11 +7,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
-export function runTest(args: string[]): void {
+export async function runTest(args: string[]): Promise<void> {
   const outputDir = args[0] ? path.resolve(args[0]) : path.resolve("output");
   const testFile = path.join(outputDir, "src", "tests.ts");
 
-  if (!fs.existsSync(testFile)) {
+  try {
+    await fs.promises.access(testFile);
+  } catch {
     console.error(`No test file found at ${testFile}`);
     console.error("Run 'bonec compile <file>' first to generate tests.");
     process.exit(1);

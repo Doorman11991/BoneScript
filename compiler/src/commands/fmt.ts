@@ -8,12 +8,12 @@ import { Lexer } from "../lexer";
 import { Parser } from "../parser";
 import { Formatter } from "../formatter";
 
-export function runFormat(source: string, resolved: string): void {
+export async function runFormat(source: string, resolved: string): Promise<void> {
   try {
     const tokens = new Lexer(source).tokenize();
     const ast = new Parser(tokens).parse();
     const formatted = new Formatter().format(ast);
-    fs.writeFileSync(resolved, formatted, "utf-8");
+    await fs.promises.writeFile(resolved, formatted, "utf-8");
     console.log(`v Formatted ${resolved}`);
   } catch (e: any) {
     console.error(`x ${e.message}`);

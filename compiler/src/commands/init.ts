@@ -11,7 +11,7 @@ const VALID_DOMAINS: ScaffoldDomain[] = [
   "social_network", "marketplace", "realtime_collaboration",
 ];
 
-export function runInit(args: string[]): void {
+export async function runInit(args: string[]): Promise<void> {
   if (args.length === 0) {
     console.error("Error: bonec init requires a project name.");
     console.error("Example: bonec init my-project --domain saas_platform");
@@ -37,7 +37,7 @@ export function runInit(args: string[]): void {
     process.exit(1);
   }
 
-  const result = scaffold({ name, domain, outDir });
+  const result = await scaffold({ name, domain, outDir });
   console.log(`v Created ${result.created.length} file(s):`);
   for (const f of result.created) console.log(`  ${f}`);
   console.log(`\nNext steps:`);

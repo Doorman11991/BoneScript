@@ -10,13 +10,12 @@ export function runWatch(_source: string, resolved: string): void {
   console.log(`Watching ${resolved}...`);
 
   const compile = () => {
-    try {
-      const fresh = fs.readFileSync(resolved, "utf-8");
-      console.log(`\n[${new Date().toLocaleTimeString()}] Compiling...`);
-      runCompile(fresh, resolved);
-    } catch (e: any) {
-      console.error(`x ${e.message}`);
-    }
+    fs.promises.readFile(resolved, "utf-8")
+      .then(fresh => {
+        console.log(`\n[${new Date().toLocaleTimeString()}] Compiling...`);
+        return runCompile(fresh, resolved);
+      })
+      .catch((e: any) => console.error(`x ${e.message}`));
   };
 
   compile();

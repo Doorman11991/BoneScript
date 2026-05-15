@@ -1,5 +1,5 @@
 /**
- * BoneScript Module Loader â€” Resolves import declarations across multiple .bone files.
+ * BoneScript Module Loader — Resolves import declarations across multiple .bone files.
  *
  * Behavior:
  * - Tracks loaded files to avoid cycles
@@ -10,7 +10,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import { Lexer } from "./lexer";
-import { Parser } from "./parser";
 import { RecoveringParser } from "./parser_recovery";
 import { ParseError } from "./parser_base";
 import * as AST from "./ast";
@@ -26,10 +25,9 @@ export class ModuleLoader {
   private inProgress = new Set<string>();
   private errors: { file: string; error: ParseError }[] = [];
 
-  load(entryFile: string): LoadResult {
+  async load(entryFile: string): Promise<LoadResult> {
     const resolved = path.resolve(entryFile);
-    const ast = this.loadFile(resolved);
-
+    const ast = await this.loadFile(resolved);
     return {
       ast,
       errors: this.errors,
@@ -37,7 +35,7 @@ export class ModuleLoader {
     };
   }
 
-  private loadFile(filePath: string): AST.ProgramNode | null {
+  private async loadFile(filePath: string): Promise<AST.ProgramNode | null> {
     if (this.loaded.has(filePath)) return this.loaded.get(filePath)!;
     if (this.inProgress.has(filePath)) {
       this.errors.push({
@@ -47,7 +45,10 @@ export class ModuleLoader {
       return null;
     }
 
-    if (!fs.existsSync(filePath)) {
+    // Check existence without blocking the event loop
+    try {
+      await fs.promises.access(filePath);
+    } catch {
       this.errors.push({
         file: filePath,
         error: new ParseError(`File not found: ${filePath}`, { line: 1, column: 1, offset: 0 }),
@@ -57,7 +58,7 @@ export class ModuleLoader {
 
     this.inProgress.add(filePath);
 
-    const source = fs.readFileSync(filePath, "utf-8");
+    const source = await fs.promises.readFile(filePath, "utf-8");
     const tokens = new Lexer(source).tokenize();
     const result = new RecoveringParser(tokens).parse();
 
@@ -70,37 +71,34 @@ export class ModuleLoader {
       return null;
     }
 
-    // Resolve imports recursively
+    // Resolve imports recursively (in parallel where possible)
     const importedSystems: AST.SystemDeclNode[] = [];
     for (const sys of result.ast.systems) {
       const imports = sys.declarations.filter((d): d is AST.ImportDeclNode => d.kind === "ImportDecl");
-      for (const imp of imports) {
-        const importPath = path.resolve(path.dirname(filePath), imp.from);
-        const importedAst = this.loadFile(importPath);
-        if (importedAst) {
-          importedSystems.push(...importedAst.systems);
-        }
+      // Load all imports for this system in parallel
+      const importedAsts = await Promise.all(
+        imports.map(imp => {
+          const importPath = path.resolve(path.dirname(filePath), imp.from);
+          return this.loadFile(importPath);
+        })
+      );
+      for (const importedAst of importedAsts) {
+        if (importedAst) importedSystems.push(...importedAst.systems);
       }
     }
 
-    // Merge imported systems' declarations into current systems
+    // Merge imported declarations into current systems
     if (importedSystems.length > 0) {
-      const mergedSystems = result.ast.systems.map(sys => {
-        const importedDecls: AST.DeclarationNode[] = [];
-        for (const imported of importedSystems) {
-          // Add imported entities, events, etc. (skip imports themselves)
-          for (const d of imported.declarations) {
-            if (d.kind !== "ImportDecl") importedDecls.push(d);
-          }
-        }
+      result.ast.systems = result.ast.systems.map(sys => {
+        const importedDecls: AST.DeclarationNode[] = importedSystems.flatMap(imported =>
+          imported.declarations.filter(d => d.kind !== "ImportDecl")
+        );
         return {
           ...sys,
           declarations: [...sys.declarations.filter(d => d.kind !== "ImportDecl"), ...importedDecls],
         };
       });
-      result.ast.systems = mergedSystems;
     } else {
-      // Remove import declarations from final AST
       result.ast.systems = result.ast.systems.map(sys => ({
         ...sys,
         declarations: sys.declarations.filter(d => d.kind !== "ImportDecl"),

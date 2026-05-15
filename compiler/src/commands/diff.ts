@@ -20,28 +20,34 @@ function toSnakeCase(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
-function compileToIR(filePath: string): IR.IRSystem[] {
+async function compileToIR(filePath: string): Promise<IR.IRSystem[]> {
   const resolved = path.resolve(filePath);
-  if (!fs.existsSync(resolved)) {
+  try {
+    await fs.promises.access(resolved);
+  } catch {
     console.error(`File not found: ${resolved}`);
     process.exit(1);
   }
-  const source = fs.readFileSync(resolved, "utf-8");
+  const source = await fs.promises.readFile(resolved, "utf-8");
   const tokens = new Lexer(source).tokenize();
   const ast = new Parser(tokens).parse();
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
   return new Lowering().lower(ast, hash);
 }
 
-export function runDiff(args: string[]): void {
+export async function runDiff(args: string[]): Promise<void> {
   if (args.length < 2) {
     console.error("Usage: bonec diff <old.bone> <new.bone>");
     process.exit(1);
   }
 
   const [oldFile, newFile] = args;
-  const oldIR = compileToIR(oldFile);
-  const newIR = compileToIR(newFile);
+
+  // Load both files in parallel
+  const [oldIR, newIR] = await Promise.all([
+    compileToIR(oldFile),
+    compileToIR(newFile),
+  ]);
 
   const collectModels = (systems: IR.IRSystem[]) => {
     const models: IR.IRModel[] = [];

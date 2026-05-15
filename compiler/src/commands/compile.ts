@@ -16,13 +16,13 @@ import { ModuleLoader } from "../module_loader";
 import { mergeWithExisting } from "../extension_manager";
 import { optimize } from "../optimizer";
 
-export function runCompile(source: string, resolved: string): void {
+export async function runCompile(source: string, resolved: string): Promise<void> {
   try {
     const tokens = new Lexer(source).tokenize();
     console.log(`  [1/7] Lexed: ${tokens.length} tokens`);
 
     const loader = new ModuleLoader();
-    const loadResult = loader.load(resolved);
+    const loadResult = await loader.load(resolved);
 
     if (loadResult.errors.length > 0) {
       console.log(`  [2/7] Parse: ${loadResult.errors.length} error(s)`);
@@ -121,27 +121,30 @@ export function runCompile(source: string, resolved: string): void {
       console.log(`         ${issue.severity === "error" ? "x" : "!"} ${issue.code}: ${issue.message}`);
     }
 
-    // Write output
+    // Write output — all writes in parallel per directory
     const outputDir = path.resolve(path.dirname(resolved), "output");
     const allExtensions = irSystems.flatMap(s => s.extension_points || []);
     const extensionErrors: string[] = [];
 
-    for (const f of allFiles) {
+    // Collect unique directories and create them all first
+    const dirs = new Set(allFiles.map(f => path.dirname(path.join(outputDir, f.path))));
+    await Promise.all([...dirs].map(dir => fs.promises.mkdir(dir, { recursive: true })));
+
+    // Write all files (extensions.ts merged, rest written directly)
+    await Promise.all(allFiles.map(async f => {
       const outPath = path.join(outputDir, f.path);
-      const dir = path.dirname(outPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
       if (f.path === "src/extensions.ts" && allExtensions.length > 0) {
         const astExtensions = ast.systems.flatMap(s =>
           s.declarations.filter((d): d is any => d.kind === "ExtensionPointDecl")
         );
-        const { content, validationErrors } = mergeWithExisting(f.content, outPath, astExtensions);
+        const { content, validationErrors } = await mergeWithExisting(f.content, outPath, astExtensions);
         for (const e of validationErrors) extensionErrors.push(e.message);
-        fs.writeFileSync(outPath, content, "utf-8");
+        await fs.promises.writeFile(outPath, content, "utf-8");
       } else {
-        fs.writeFileSync(outPath, f.content, "utf-8");
+        await fs.promises.writeFile(outPath, f.content, "utf-8");
       }
-    }
+    }));
 
     if (extensionErrors.length > 0) {
       console.log(`\n  Extension point errors:`);

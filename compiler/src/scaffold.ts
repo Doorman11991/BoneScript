@@ -336,31 +336,28 @@ export interface ScaffoldOptions {
   outDir: string;
 }
 
-export function scaffold(opts: ScaffoldOptions): { created: string[] } {
+export async function scaffold(opts: ScaffoldOptions): Promise<{ created: string[] }> {
   const created: string[] = [];
 
-  if (!fs.existsSync(opts.outDir)) {
-    fs.mkdirSync(opts.outDir, { recursive: true });
-  }
+  await fs.promises.mkdir(opts.outDir, { recursive: true });
 
   // Main .bone file
   const mainFile = path.join(opts.outDir, `${opts.name}.bone`);
   let content = TEMPLATES[opts.domain];
-  // Replace placeholder system name with provided name
   content = content.replace(/^system \w+ \{/, `system ${pascalCase(opts.name)} {`);
-  fs.writeFileSync(mainFile, content, "utf-8");
+  await fs.promises.writeFile(mainFile, content, "utf-8");
   created.push(mainFile);
 
   // README
   const readmePath = path.join(opts.outDir, "README.md");
-  fs.writeFileSync(readmePath, `# ${opts.name}
+  await fs.promises.writeFile(readmePath, `# ${opts.name}
 
 BoneScript project (domain: ${opts.domain}).
 
 ## Compile
 
 \`\`\`bash
-bone compile ${opts.name}.bone
+bonec compile ${opts.name}.bone
 \`\`\`
 
 The output will be written to \`./output/\` as a complete Node.js project.

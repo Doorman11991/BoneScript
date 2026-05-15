@@ -168,16 +168,18 @@ export function validateExtensions(
 // ─── File-Level Merge ────────────────────────────────────────────────────────
 // Called by the emitter when writing output files.
 
-export function mergeWithExisting(
+export async function mergeWithExisting(
   newContent: string,
   outputPath: string,
   extensions: AST.ExtensionPointDeclNode[]
-): { content: string; validationErrors: ExtensionValidationError[] } {
+): Promise<{ content: string; validationErrors: ExtensionValidationError[] }> {
   let existingImpls = new Map<string, ExtractedImpl>();
 
-  if (fs.existsSync(outputPath)) {
-    const existing = fs.readFileSync(outputPath, "utf-8");
+  try {
+    const existing = await fs.promises.readFile(outputPath, "utf-8");
     existingImpls = extractImplementations(existing);
+  } catch {
+    // File doesn't exist yet — start with empty implementations
   }
 
   const validationErrors = validateExtensions(extensions, existingImpls);

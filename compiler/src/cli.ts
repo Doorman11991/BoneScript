@@ -5,35 +5,39 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { runCompile }             from "./commands/compile";
-import { runCheck }               from "./commands/check";
-import { runLex }                 from "./commands/lex";
-import { runParse }               from "./commands/parse";
-import { runIR }                  from "./commands/ir";
-import { runFormat }              from "./commands/fmt";
-import { runWatch }               from "./commands/watch";
-import { runInit }                from "./commands/init";
-import { runDiff }                from "./commands/diff";
-import { runDebug }               from "./commands/debug";
-import { runTest }                from "./commands/test";
-import { runVerifyDeterminism }   from "./commands/verify_determinism";
+import { runCompile }           from "./commands/compile";
+import { runCheck }             from "./commands/check";
+import { runLex }               from "./commands/lex";
+import { runParse }             from "./commands/parse";
+import { runIR }                from "./commands/ir";
+import { runFormat }            from "./commands/fmt";
+import { runWatch }             from "./commands/watch";
+import { runInit }              from "./commands/init";
+import { runDiff }              from "./commands/diff";
+import { runDebug }             from "./commands/debug";
+import { runTest }              from "./commands/test";
+import { runVerifyDeterminism } from "./commands/verify_determinism";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function requireFile(
+/** Read a file and pass its contents to an async action. */
+async function requireFile(
   filePath: string | undefined,
-  action: (source: string, resolved: string) => void,
-): void {
+  action: (source: string, resolved: string) => Promise<void> | void,
+): Promise<void> {
   if (!filePath) {
     console.error("Error: No input file specified.");
     process.exit(1);
   }
   const resolved = path.resolve(filePath);
-  if (!fs.existsSync(resolved)) {
+  try {
+    await fs.promises.access(resolved);
+  } catch {
     console.error(`Error: File not found: ${resolved}`);
     process.exit(1);
   }
-  action(fs.readFileSync(resolved, "utf-8"), resolved);
+  const source = await fs.promises.readFile(resolved, "utf-8");
+  await action(source, resolved);
 }
 
 function showHelp(): void {
@@ -60,7 +64,7 @@ function showHelp(): void {
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
@@ -69,18 +73,18 @@ function main(): void {
   }
 
   switch (args[0]) {
-    case "compile":           requireFile(args[1], runCompile); break;
-    case "check":             requireFile(args[1], (src) => runCheck(src)); break;
-    case "lex":               requireFile(args[1], (src) => runLex(src)); break;
-    case "parse":             requireFile(args[1], (src) => runParse(src)); break;
-    case "ir":                requireFile(args[1], (src) => runIR(src)); break;
-    case "fmt":               requireFile(args[1], runFormat); break;
-    case "watch":             requireFile(args[1], runWatch); break;
-    case "init":              runInit(args.slice(1)); break;
-    case "diff":              runDiff(args.slice(1)); break;
-    case "debug":             requireFile(args[1], runDebug); break;
-    case "test":              runTest(args.slice(1)); break;
-    case "verify-determinism": requireFile(args[1], (src) => runVerifyDeterminism(src)); break;
+    case "compile":            await requireFile(args[1], runCompile); break;
+    case "check":              await requireFile(args[1], (src) => runCheck(src)); break;
+    case "lex":                await requireFile(args[1], (src) => runLex(src)); break;
+    case "parse":              await requireFile(args[1], (src) => runParse(src)); break;
+    case "ir":                 await requireFile(args[1], (src) => runIR(src)); break;
+    case "fmt":                await requireFile(args[1], runFormat); break;
+    case "watch":              await requireFile(args[1], runWatch); break;
+    case "init":               await runInit(args.slice(1)); break;
+    case "diff":               await runDiff(args.slice(1)); break;
+    case "debug":              await requireFile(args[1], runDebug); break;
+    case "test":               await runTest(args.slice(1)); break;
+    case "verify-determinism": await requireFile(args[1], (src) => runVerifyDeterminism(src)); break;
     default:
       console.error(`Unknown command: ${args[0]}`);
       showHelp();
@@ -88,4 +92,7 @@ function main(): void {
   }
 }
 
-main();
+main().catch(e => {
+  console.error(`x Fatal: ${e.message}`);
+  process.exit(1);
+});
