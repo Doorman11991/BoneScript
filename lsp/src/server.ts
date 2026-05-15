@@ -300,7 +300,7 @@ connection.onCompletion((params: CompletionParams): CompletionItem[] => {
       { label: 'filter', kind: CompletionItemKind.Keyword, insertText: 'filter: ${0}', insertTextFormat: 2 },
     ];
     case 'store_body': return [
-      { label: 'engine', kind: CompletionItemKind.Keyword, insertText: 'engine: ${1|postgresql,redis,mongodb,sqlite,s3,dynamodb|}', insertTextFormat: 2 },
+      { label: 'engine', kind: CompletionItemKind.Keyword, insertText: 'engine: ${1|postgresql,redis|}', insertTextFormat: 2 },
       { label: 'schema', kind: CompletionItemKind.Keyword, insertText: 'schema: {\n  $0\n}', insertTextFormat: 2 },
       { label: 'retention', kind: CompletionItemKind.Keyword, insertText: 'retention: ${1:30d}', insertTextFormat: 2 },
       { label: 'partition', kind: CompletionItemKind.Keyword, insertText: 'partition: ${1:id}', insertTextFormat: 2 },
@@ -333,7 +333,7 @@ const KEYWORD_DOCS: Record<string, string> = {
   entity: '**entity** — A uniquely identifiable, stateful data object. Gets `id`, `created_at`, `updated_at` automatically.',
   capability: '**capability** — A named, atomic operation that changes system state.',
   channel: '**channel** — A communication pathway between participants.',
-  store: '**store** — A persistence mechanism. Supports: postgresql, redis, mongodb, sqlite, s3, dynamodb.',
+  store: '**store** — A persistence mechanism. Supports: postgresql, redis.',
   event: '**event** — An immutable record of something that happened.',
   flow: '**flow** — A multi-step orchestrated process (saga). Each step must have a compensation.',
   policy: '**policy** — Security and rate-limiting rules.',
@@ -789,6 +789,8 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
         },
       });
     }
+
+  } // end for (const diag of params.context.diagnostics)
 
   return actions;
 });

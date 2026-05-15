@@ -73,6 +73,7 @@ export function lowerChannel(systemName: string, channel: AST.ChannelDeclNode): 
       ordering:    channel.ordering    || "fifo",
       persistence: channel.persistence || "none",
       max_size:    channel.maxSize     || 10000,
+      ...(channel.filter ? { filter: serializeExpr(channel.filter) } : {}),
     },
   };
 }

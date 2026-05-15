@@ -76,5 +76,8 @@ coverage/
 # ─── Temp fix scripts ────────────────────────────────────────────────────────
 fix_*.py
 
+# ─── Spec directory (aspirational, not authoritative) ────────────────────────
+spec/
+
 # ─── vscode-ext compiled output ──────────────────────────────────────────────
 vscode-ext/out/

@@ -163,7 +163,6 @@ const TEMPLATES: Record<ScaffoldDomain, string> = {
   }
 
   store DeviceStore {
-    engine: dynamodb
     schema: {
       id: uuid,
       serial: string,
