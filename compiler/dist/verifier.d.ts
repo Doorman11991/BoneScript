@@ -40,6 +40,7 @@ export declare class Verifier {
     private checkModels;
     private checkStateMachines;
     private checkCircularDeps;
+    private checkAuthDependencies;
     private checkTypeScriptSyntax;
     private checkSqlSyntax;
     private checkImports;

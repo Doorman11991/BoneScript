@@ -76,7 +76,9 @@ function emitTsConfig() {
         compilerOptions: {
             target: "ES2020",
             module: "commonjs",
-            lib: ["ES2020"],
+            // ES2020 + DOM gives us the built-in fetch types (Node 18+ ships a
+            // WHATWG-compatible fetch; DOM provides the matching type declarations).
+            lib: ["ES2020", "DOM"],
             outDir: "./dist",
             rootDir: "./src",
             strict: true,

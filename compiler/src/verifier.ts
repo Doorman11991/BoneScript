@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BoneScript Verifier â€” Stage 7 of the compilation pipeline.
  * Implements spec/07_IR_SPEC.md Â§5 (IR Validation Rules).
  *
@@ -48,6 +48,7 @@ export class Verifier {
     this.checkModels(system, issues);
     this.checkStateMachines(system, issues);
     this.checkCircularDeps(system, issues);
+    this.checkAuthDependencies(system, issues);
 
     // â”€â”€â”€ Generated Code Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -230,6 +231,46 @@ export class Verifier {
 
   // â”€â”€â”€ Generated TypeScript Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+
+  // --- V011: Authenticated methods require auth dependency -------------------
+
+  private checkAuthDependencies(system: IR.IRSystem, issues: VerifyIssue[]) {
+    // Collect all module IDs that are auth_service kind
+    const authServiceIds = new Set(
+      system.modules.filter(m => m.kind === "auth_service").map(m => m.id)
+    );
+
+    for (const mod of system.modules) {
+      // Skip auth services themselves
+      if (mod.kind === "auth_service") continue;
+
+      // Check if any method in this module is authenticated
+      const hasAuthenticatedMethod = mod.interfaces.some(iface =>
+        iface.methods.some(method => method.authenticated)
+      );
+
+      if (!hasAuthenticatedMethod) continue;
+
+      // Check if the module declares a dependency on at least one auth_service
+      const dependsOnAuth = mod.dependencies.some(dep => authServiceIds.has(dep));
+
+      if (!dependsOnAuth) {
+        // Collect the authenticated method names for a helpful message
+        const authMethods: string[] = [];
+        for (const iface of mod.interfaces) {
+          for (const method of iface.methods) {
+            if (method.authenticated) authMethods.push(method.name);
+          }
+        }
+        issues.push({
+          code: "V011",
+          severity: "warning",
+          message: `Module '${mod.name}' has authenticated method(s) [${authMethods.join(', ')}] but does not declare a dependency on an auth_service module`,
+          location: mod.id,
+        });
+      }
+    }
+  }
   private checkTypeScriptSyntax(files: EmittedFile[], issues: VerifyIssue[]) {
     for (const file of files) {
       if (file.language !== "typescript") continue;

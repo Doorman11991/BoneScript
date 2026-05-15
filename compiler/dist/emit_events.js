@@ -72,10 +72,10 @@ const MODE: EventDeliveryMode =
   (process.env.EVENT_MODE as EventDeliveryMode) || "in_process";
 
 // Events requiring exactly_once delivery (deduplicated)
-const EXACTLY_ONCE_EVENTS = new Set([${exactlyOnceEvents.join(", ")}]);
+const EXACTLY_ONCE_EVENTS = new Set<string>([${exactlyOnceEvents.join(", ")}]);
 
 // Events requiring at_least_once delivery (retried until ack)
-const AT_LEAST_ONCE_EVENTS = new Set([${atLeastOnceEvents.join(", ")}]);
+const AT_LEAST_ONCE_EVENTS = new Set<string>([${atLeastOnceEvents.join(", ")}]);
 
 export interface EventMetadata {
   source: string;

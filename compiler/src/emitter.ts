@@ -226,9 +226,21 @@ export class Emitter {
     lines.push(`// Source: ${system.source_hash}`);
     lines.push(``);
 
+    // Track exported interface names to avoid duplicate exports (e.g. ValidationError
+    // defined in multiple model files would collide on export * re-exports).
+    const exportedNames = new Set<string>();
+
     for (const mod of system.modules) {
       for (const model of mod.models) {
-        lines.push(`export interface ${model.name} {`);
+        // If the name was already exported by a previous module, qualify it with
+        // the module name so every export remains unique.
+        let ifaceName = model.name;
+        if (exportedNames.has(ifaceName)) {
+          ifaceName = `${mod.name}${model.name}`;
+        }
+        exportedNames.add(ifaceName);
+
+        lines.push(`export interface ${ifaceName} {`);
         for (const field of model.fields) {
           const nullable = field.nullable ? " | null" : "";
           lines.push(`  ${field.name}: ${toTsType(field.type)}${nullable};`);

@@ -143,8 +143,9 @@ function detectContext(doc: TextDocument, pos: Position): BoneContext {
   const opens: string[] = [];
   for (let i = 0; i < before.length; i++) {
     if (before[i] === '{') {
-      const pre = before.slice(Math.max(0, i - 80), i);
-      const kw = pre.match(/\b(system|entity|capability|channel|store|event|policy|flow)\s+\w+\s*$/);
+      const pre = before.slice(Math.max(0, i - 120), i);
+      // capability uses `name(params) {` — match name followed by optional (…) before {
+      const kw = pre.match(/\b(system|entity|capability|channel|store|event|policy|flow)\s+\w+(?:\s*\([^)]*\))?\s*$/);
       opens.push(kw ? kw[1] : 'unknown');
     } else if (before[i] === '}') { opens.pop(); }
   }
