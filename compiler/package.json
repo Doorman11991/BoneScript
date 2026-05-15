@@ -38,11 +38,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dantheman181/bonescript.git"
+    "url": "git+https://github.com/Doorman11991/BoneScript.git"
   },
-  "homepage": "https://github.com/dantheman181/bonescript#readme",
+  "homepage": "https://github.com/Doorman11991/BoneScript#readme",
   "bugs": {
-    "url": "https://github.com/dantheman181/bonescript/issues"
+    "url": "https://github.com/Doorman11991/BoneScript/issues"
   },
   "devDependencies": {
     "@types/node": "18.19.0",
