@@ -228,7 +228,6 @@ connection.onCompletion((params: CompletionParams): CompletionItem[] => {
   }
 
   const ctx = detectContext(doc, params.position);
-  const sym = symbolCache.get(params.textDocument.uri) ?? emptySymbols();
   const line = lineAt(doc, params.position);
 
   if (ctx === 'field_access') {

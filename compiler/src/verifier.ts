@@ -48,6 +48,7 @@ export class Verifier {
     this.checkModels(system, issues);
     this.checkStateMachines(system, issues);
     this.checkCircularDeps(system, issues);
+    this.checkPreconditions(system, issues);       // V005
     this.checkMethodEffects(system, issues);       // V006
     this.checkAuthDependencies(system, issues);    // V011
     this.checkResolutionMap(system, issues);       // V012
@@ -348,6 +349,50 @@ export class Verifier {
           message: `Event '${ev.name}' source '${ev.source}' does not match any module id`,
           location: ev.id,
         });
+      }
+    }
+  }
+
+  // ─── V005: Preconditions reference accessible fields ─────────────────────
+  private checkPreconditions(system: IR.IRSystem, issues: VerifyIssue[]) {
+    // Build a map of all model field names by model name (lowercase for case-insensitive lookup)
+    const modelFields = new Map<string, Set<string>>();
+    for (const mod of system.modules) {
+      for (const model of mod.models) {
+        const fields = new Set(model.fields.map(f => f.name));
+        // Add ontology-entailed fields always present
+        fields.add("id"); fields.add("created_at"); fields.add("updated_at"); fields.add("state");
+        modelFields.set(model.name, fields);
+        modelFields.set(model.name.toLowerCase(), fields);
+      }
+    }
+
+    // Simple field-path extractor: finds "word.word" patterns in a serialized expression
+    const fieldPathPattern = /\b([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b/g;
+
+    for (const mod of system.modules) {
+      for (const iface of mod.interfaces) {
+        for (const method of iface.methods) {
+          for (const pre of method.preconditions) {
+            let match: RegExpExecArray | null;
+            fieldPathPattern.lastIndex = 0;
+            while ((match = fieldPathPattern.exec(pre.expression)) !== null) {
+              const [, paramName, fieldName] = match;
+              // Skip known non-field patterns (e.g. "now()", numeric literals)
+              if (paramName === "now" || /^\d/.test(paramName)) continue;
+              // Check if the field exists in any model — warn if not found
+              const foundInAnyModel = [...modelFields.values()].some(f => f.has(fieldName));
+              if (!foundInAnyModel) {
+                issues.push({
+                  code: "V005",
+                  severity: "warning",
+                  message: `Precondition in '${method.name}' references '${paramName}.${fieldName}' — field '${fieldName}' not found in any model`,
+                  location: `${mod.id}.${method.name}`,
+                });
+              }
+            }
+          }
+        }
       }
     }
   }

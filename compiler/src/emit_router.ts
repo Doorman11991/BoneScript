@@ -119,9 +119,16 @@ export function emitEntityRouter(mod: IR.IRModule, system: IR.IRSystem): string 
 
   // Import broadcastToChannel if any capability uses sync: realtime
   const hasRealtime = mod.interfaces.some(i => i.methods.some(m => m.sync === "realtime"));
-  const hasWebSocket = system.modules.some(m => m.kind === "realtime_service");
-  if (hasRealtime && hasWebSocket) {
-    lines.push(`import { broadcastToChannel } from "../websocket";`);
+  if (hasRealtime) {
+    // Only import if websocket.ts will be generated (system has realtime_service modules)
+    const hasWebSocket = system.modules.some(m => m.kind === "realtime_service");
+    if (hasWebSocket) {
+      lines.push(`import { broadcastToChannel } from "../websocket";`);
+    } else {
+      // No WebSocket server — define a no-op stub so the route file still compiles
+      lines.push(`// No realtime_service declared — broadcastToChannel is a no-op`);
+      lines.push(`function broadcastToChannel(_channel: string, _msg: unknown, _exclude?: unknown): void {}`);
+    }
     lines.push(``);
   }
   const unknownFunctions = collectUnknownFunctions(mod);

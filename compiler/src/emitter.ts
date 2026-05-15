@@ -351,7 +351,7 @@ export class Emitter {
       // Implementation class
       lines.push(`export class ${mod.name} implements ${iface.name} {`);
       for (const method of iface.methods) {
-        lines.push(this.emitMethod(method));
+        lines.push(this.emitMethod(method, mod, system));
       }
       lines.push(`}`);
       lines.push(``);
@@ -365,7 +365,7 @@ export class Emitter {
     };
   }
 
-  private emitMethod(method: IR.IRMethod): string {
+  private emitMethod(method: IR.IRMethod, mod: IR.IRModule, system: IR.IRSystem): string {
     const lines: string[] = [];
     const params = method.input.map(f => `${f.name}: ${toTsType(f.type)}`).join(", ");
     const ctxParam = method.authenticated ? "ctx: RequestContext" : "";
@@ -410,8 +410,28 @@ export class Emitter {
       lines.push(``);
     }
 
-    lines.push(`    // TODO: Implementation`);
-    lines.push(`    throw new Error("Not implemented: ${method.name}");`);
+    // Real implementation — delegate to emitCapabilityBody for capabilities,
+    // or generate CRUD SQL for standard methods
+    const { emitCapabilityBody } = require("./emit_capability");
+    const { emitPipelineBody, emitAlgorithmBody } = require("./emit_composition");
+
+    if (method.pipeline) {
+      lines.push(emitPipelineBody(method, "    "));
+    } else if (method.algorithm) {
+      lines.push(emitAlgorithmBody(method, "    "));
+    } else if (method.effects.length > 0 || method.preconditions.length > 0) {
+      // Capability with effects/preconditions — use the full capability body emitter
+      try {
+        lines.push(emitCapabilityBody(method, mod, system, "    "));
+      } catch {
+        // Fallback: emit a descriptive stub if body generation fails
+        lines.push(`    // Effects: ${method.effects.map((e: any) => e.target + " " + e.op + " " + e.value).join("; ")}`);
+        lines.push(`    return { ok: false, error: { code: "NOT_IMPLEMENTED", message: "${method.name} not yet implemented" } };`);
+      }
+    } else {
+      // CRUD or simple method — emit a typed not-implemented stub
+      lines.push(`    return { ok: false, error: { code: "NOT_IMPLEMENTED", message: "${method.name} not yet implemented" } };`);
+    }
     lines.push(`  }`);
     lines.push(``);
 

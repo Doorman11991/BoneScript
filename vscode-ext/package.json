@@ -24,7 +24,85 @@
         "scopeName": "source.bone",
         "path": "./syntaxes/bone.tmLanguage.json"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "bone.compile",
+        "title": "BoneScript: Compile",
+        "icon": "$(play)"
+      },
+      {
+        "command": "bone.check",
+        "title": "BoneScript: Check (no codegen)",
+        "icon": "$(check)"
+      },
+      {
+        "command": "bone.fmt",
+        "title": "BoneScript: Format File",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "bone.init",
+        "title": "BoneScript: Init New Project",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "bone.showOutput",
+        "title": "BoneScript: Show Output",
+        "icon": "$(output)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "bone.compile",
+          "when": "resourceExtname == .bone",
+          "group": "navigation"
+        },
+        {
+          "command": "bone.check",
+          "when": "resourceExtname == .bone",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "bone.compile",
+          "when": "resourceExtname == .bone",
+          "group": "bone"
+        },
+        {
+          "command": "bone.check",
+          "when": "resourceExtname == .bone",
+          "group": "bone"
+        },
+        {
+          "command": "bone.fmt",
+          "when": "resourceExtname == .bone",
+          "group": "bone"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "BoneScript",
+      "properties": {
+        "bonescript.compilerPath": {
+          "type": "string",
+          "default": "bonec",
+          "description": "Path to the bonec compiler binary. Defaults to 'bonec' (must be on PATH)."
+        },
+        "bonescript.outputDir": {
+          "type": "string",
+          "default": "",
+          "description": "Output directory for compiled projects. Defaults to a sibling 'output/' folder."
+        },
+        "bonescript.autoFormat": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically format .bone files on save."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc",
