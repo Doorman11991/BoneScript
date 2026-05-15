@@ -41,7 +41,7 @@ async function requireFile(
 }
 
 function showHelp(): void {
-  console.log("BoneScript compiler v0.2.1");
+  console.log("BoneScript compiler v0.3.0");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file>                  Compile to runnable project");
