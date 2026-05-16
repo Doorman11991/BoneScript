@@ -29,6 +29,7 @@ export declare class Formatter {
     private formatFlow;
     private formatImport;
     private formatType;
+    private formatField;
     private formatExpr;
     private formatExtensionPoint;
 }

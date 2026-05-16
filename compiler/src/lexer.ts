@@ -25,6 +25,7 @@ export enum TokenKind {
   Arrow = "Arrow",
   Pipe = "Pipe",
   Semicolon = "Semicolon",
+  At = "At",
 
   // Operators
   Equals = "Equals",
@@ -519,6 +520,7 @@ export class Lexer {
       case "?": this.advance(); return { kind: TokenKind.Question, value: "?", loc };
       case "!": this.advance(); return { kind: TokenKind.Bang, value: "!", loc };
       case ";": this.advance(); return { kind: TokenKind.Semicolon, value: ";", loc };
+      case "@": this.advance(); return { kind: TokenKind.At, value: "@", loc };
     }
 
     // String literal

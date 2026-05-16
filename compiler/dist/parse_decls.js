@@ -38,7 +38,42 @@ function parseField(s) {
     if (s.match(lexer_1.TokenKind.Equals)) {
         defaultValue = (0, parse_expr_1.parseExpr)(s);
     }
-    return { kind: "Field", loc, name, type, defaultValue };
+    // Optional annotations: @renamed_from(old_name), @sensitive
+    let renamedFrom = null;
+    let sensitive = false;
+    while (s.check(lexer_1.TokenKind.At)) {
+        s.advance();
+        const annoName = parseIdentOrKeyword(s);
+        if (annoName === "renamed_from") {
+            s.expect(lexer_1.TokenKind.LParen, "renamed_from(old_name)");
+            renamedFrom = parseIdentOrKeyword(s);
+            s.expect(lexer_1.TokenKind.RParen, "renamed_from close");
+        }
+        else if (annoName === "sensitive") {
+            // Bare flag annotation. Optional empty parens for forward compat.
+            sensitive = true;
+            if (s.match(lexer_1.TokenKind.LParen)) {
+                s.expect(lexer_1.TokenKind.RParen, "sensitive close");
+            }
+        }
+        else {
+            // Unknown annotation — accept and ignore for forward compat; consume
+            // an optional (...) payload so it parses cleanly.
+            if (s.match(lexer_1.TokenKind.LParen)) {
+                let depth = 1;
+                while (depth > 0 && !s.check(lexer_1.TokenKind.EOF)) {
+                    if (s.check(lexer_1.TokenKind.LParen))
+                        depth++;
+                    else if (s.check(lexer_1.TokenKind.RParen))
+                        depth--;
+                    if (depth > 0)
+                        s.advance();
+                }
+                s.expect(lexer_1.TokenKind.RParen, "annotation close");
+            }
+        }
+    }
+    return { kind: "Field", loc, name, type, defaultValue, renamedFrom, sensitive };
 }
 exports.parseField = parseField;
 function parseIdentList(s) {

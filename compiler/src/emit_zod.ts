@@ -62,9 +62,13 @@ export function emitZodSchemas(system: IR.IRSystem): string {
   lines.push(`import { z } from "zod";`);
   lines.push("");
 
-  // Model schemas
+  // Model schemas — dedupe by name since the same entity can appear in both
+  // an api_service module and its backing data_store module.
+  const seenModels = new Set<string>();
   for (const mod of system.modules) {
     for (const model of mod.models) {
+      if (seenModels.has(model.name)) continue;
+      seenModels.add(model.name);
       const schemaName = toPascalCase(model.name) + "Schema";
       const typeName = toPascalCase(model.name);
 
@@ -79,6 +83,12 @@ export function emitZodSchemas(system: IR.IRSystem): string {
       }
       lines.push(`});`);
       lines.push(`export type ${typeName} = z.infer<typeof ${schemaName}>;`);
+      // Derived schemas for CRUD validation. `omit` drops server-managed fields
+      // and `partial` makes every key optional for PUT.
+      const hasState = model.fields.some(f => f.name === "state");
+      const createPartial = hasState ? ".partial({ state: true })" : "";
+      lines.push(`export const ${toPascalCase(model.name)}CreateSchema = ${schemaName}.omit({ id: true, created_at: true, updated_at: true })${createPartial};`);
+      lines.push(`export const ${toPascalCase(model.name)}UpdateSchema = ${schemaName}.omit({ id: true, created_at: true, updated_at: true }).partial();`);
       lines.push("");
     }
   }

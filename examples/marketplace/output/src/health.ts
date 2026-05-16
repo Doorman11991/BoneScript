@@ -37,7 +37,25 @@ healthRouter.get("/startup", (_req: Request, res: Response) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// Prometheus-style metrics
-healthRouter.get("/metrics", (_req: Request, res: Response) => {
+// Prometheus-style metrics — restricted to internal callers
+function isInternalMetricsRequest(req: Request): boolean {
+  const expected = process.env.METRICS_TOKEN || "";
+  if (expected) {
+    const header = req.headers.authorization || "";
+    if (header.startsWith("Bearer ") && header.slice(7) === expected) return true;
+  }
+  const ip = (req.ip || "").replace(/^::ffff:/, "");
+  if (ip === "127.0.0.1" || ip === "::1") return true;
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  // RFC1918 172.16.0.0/12
+  const m = ip.match(/^172\.(\d{1,3})\./);
+  if (m && +m[1] >= 16 && +m[1] <= 31) return true;
+  return false;
+}
+healthRouter.get("/metrics", (req: Request, res: Response) => {
+  if (!isInternalMetricsRequest(req)) {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Metrics restricted to internal callers" } });
+    return;
+  }
   res.type("text/plain").send(dumpMetrics());
 });

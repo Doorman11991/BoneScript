@@ -75,7 +75,7 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.5.8");
+  console.log("BoneScript compiler v0.6.0");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
@@ -85,7 +85,8 @@ function showHelp() {
   console.log("  bonec ir <file>        Show IR (JSON)");
   console.log("  bonec fmt <file>       Format file in place");
   console.log("  bonec watch <file>     Recompile on change");
-  console.log("  bonec diff <old.bone> <new.bone>  Show schema migration diff");
+  console.log("  bonec diff <old.bone> <new.bone> [--write <output_dir>]");
+  console.log("                          Show schema migration diff (or write to migrations/_manual)");
   console.log("");
   console.log("compile options:");
   console.log("  --target <name>        Output target (default: express)");
@@ -515,11 +516,21 @@ function runCompileNakama(source: string, resolved: string) {
 
 function runDiff(args: string[]) {
   if (args.length < 2) {
-    console.error("Usage: bone diff <old.bone> <new.bone>");
+    console.error("Usage: bone diff <old.bone> <new.bone> [--write <dir>]");
     process.exit(1);
   }
 
   const [oldFile, newFile] = args;
+
+  // Optional: --write <dir> writes the diff to a numbered migration file
+  // under <dir>/migrations/_manual/ so the next `npm run migrate` picks it up.
+  let writeDir: string | null = null;
+  for (let i = 2; i < args.length; i++) {
+    if (args[i] === "--write" && args[i + 1]) {
+      writeDir = path.resolve(args[i + 1]);
+      i++;
+    }
+  }
 
   const compileToIR = (filePath: string) => {
     const resolved = path.resolve(filePath);
@@ -569,8 +580,18 @@ function runDiff(args: string[]) {
     if (!oldModel) continue;
 
     const table = name.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase() + "s";
-    const oldFields = new Map(oldModel.fields.map((f: any) => [f.name, f]));
-    const newFields = new Map(newModel.fields.map((f: any) => [f.name, f]));
+    const oldFields = new Map<string, any>(oldModel.fields.map((f: any) => [f.name, f]));
+    const newFields = new Map<string, any>(newModel.fields.map((f: any) => [f.name, f]));
+    const newFieldRenames = new Map<string, string>(); // newName -> oldName
+
+    // Detect renames first so we don't double-count them as add+drop.
+    for (const [fname, field] of newFields) {
+      const renamedFrom = (field as any).renamed_from;
+      if (renamedFrom && oldFields.has(renamedFrom) && !oldFields.has(fname)) {
+        statements.push(`ALTER TABLE ${table} RENAME COLUMN ${renamedFrom} TO ${fname};`);
+        newFieldRenames.set(fname, renamedFrom);
+      }
+    }
 
     const sqlTypeMap: Record<string, string> = {
       string: "VARCHAR", uint: "BIGINT", int: "BIGINT", float: "DOUBLE PRECISION",
@@ -578,13 +599,16 @@ function runDiff(args: string[]) {
     };
 
     for (const [fname, field] of newFields) {
+      if (newFieldRenames.has(fname)) continue;
       if (!oldFields.has(fname)) {
         const sqlType = sqlTypeMap[(field as any).type] || "JSONB";
         statements.push(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${fname} ${sqlType};`);
       }
     }
 
+    const renamedOldNames = new Set(newFieldRenames.values());
     for (const [fname] of oldFields) {
+      if (renamedOldNames.has(fname)) continue;
       if (!newFields.has(fname)) {
         statements.push(`-- WARNING: Column '${table}.${fname}' removed`);
         statements.push(`-- Manual: ALTER TABLE ${table} DROP COLUMN ${fname};`);
@@ -594,12 +618,36 @@ function runDiff(args: string[]) {
 
   if (statements.length === 0) {
     console.log("No schema changes detected.");
-  } else {
-    console.log(`-- BoneScript schema diff: ${path.basename(oldFile)} → ${path.basename(newFile)}`);
-    console.log(`-- Generated: ${new Date().toISOString()}`);
-    console.log(``);
-    console.log(statements.join("\n"));
+    return;
   }
+
+  const header = [
+    `-- BoneScript schema diff: ${path.basename(oldFile)} → ${path.basename(newFile)}`,
+    `-- Generated: ${new Date().toISOString()}`,
+    ``,
+  ];
+  const body = [...header, ...statements].join("\n");
+
+  if (!writeDir) {
+    console.log(body);
+    return;
+  }
+
+  // Write to <dir>/migrations/_manual/<timestamp>_<slug>.sql.
+  // Compile picks this up alongside generated schemas; the schema_migrations
+  // ledger ensures it only runs once.
+  const manualDir = path.join(writeDir, "migrations", "_manual");
+  if (!fs.existsSync(manualDir)) fs.mkdirSync(manualDir, { recursive: true });
+
+  const existing = fs.readdirSync(manualDir).filter(f => f.endsWith(".sql"));
+  const nextSeq = String(existing.length + 1).padStart(4, "0");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
+  const slug = path.basename(newFile, path.extname(newFile)).replace(/[^a-z0-9]/gi, "_").toLowerCase();
+  const fileName = `${nextSeq}_${stamp}_${slug}.sql`;
+  const target = path.join(manualDir, fileName);
+  fs.writeFileSync(target, body, "utf-8");
+  console.log(`v Wrote migration: ${target}`);
+  console.log(`  Run \`npm run migrate\` from the output dir to apply.`);
 }
 
 // ─── Debug ────────────────────────────────────────────────────────────────────

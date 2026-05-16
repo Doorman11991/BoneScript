@@ -172,6 +172,19 @@ function exprToTsInner(expr: Expr): string {
       return expr.value;
 
     case "field":
+      // `caller` is a magic identifier that resolves to the authenticated actor.
+      // Used by capabilities for ownership checks, e.g. `caller.id == seller.id`.
+      // Maps to `auth.actor_id` (the verified `sub` claim from the JWT).
+      if (expr.path[0] === "caller") {
+        if (expr.path.length === 1) return "auth?.actor_id";
+        const tail = expr.path.slice(1);
+        // Only `caller.id` is meaningful at the moment; treat any other suffix
+        // as a property access on actor_id for forward compatibility.
+        if (tail.length === 1 && (tail[0] === "id" || tail[0] === "actor_id")) {
+          return "auth?.actor_id";
+        }
+        return `auth?.actor_id?.${tail.join("?.")}`;
+      }
       // Convert field path to JS property access
       return expr.path.join("?.");
 

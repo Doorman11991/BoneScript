@@ -35,6 +35,8 @@ export interface FieldNode extends ASTNode {
     name: string;
     type: TypeExprNode;
     defaultValue: ExprNode | null;
+    renamedFrom?: string | null;
+    sensitive?: boolean;
 }
 export interface StateGraphNode extends ASTNode {
     kind: "StateGraph";

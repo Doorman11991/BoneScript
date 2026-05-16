@@ -220,9 +220,29 @@ export function emitHealthChecks(system: IR.IRSystem): string {
   lines.push(`});`);
   lines.push(``);
 
-  // Metrics endpoint
-  lines.push(`// Prometheus-style metrics`);
-  lines.push(`healthRouter.get("/metrics", (_req: Request, res: Response) => {`);
+  // Metrics endpoint — restricted to internal callers.
+  // Accepted: shared bearer in METRICS_TOKEN, or loopback / RFC1918 source IPs.
+  // External scrapers must inject the bearer; otherwise 403.
+  lines.push(`// Prometheus-style metrics — restricted to internal callers`);
+  lines.push(`function isInternalMetricsRequest(req: Request): boolean {`);
+  lines.push(`  const expected = process.env.METRICS_TOKEN || "";`);
+  lines.push(`  if (expected) {`);
+  lines.push(`    const header = req.headers.authorization || "";`);
+  lines.push(`    if (header.startsWith("Bearer ") && header.slice(7) === expected) return true;`);
+  lines.push(`  }`);
+  lines.push(`  const ip = (req.ip || "").replace(/^::ffff:/, "");`);
+  lines.push(`  if (ip === "127.0.0.1" || ip === "::1") return true;`);
+  lines.push(`  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;`);
+  lines.push(`  // RFC1918 172.16.0.0/12`);
+  lines.push(`  const m = ip.match(/^172\\.(\\d{1,3})\\./);`);
+  lines.push(`  if (m && +m[1] >= 16 && +m[1] <= 31) return true;`);
+  lines.push(`  return false;`);
+  lines.push(`}`);
+  lines.push(`healthRouter.get("/metrics", (req: Request, res: Response) => {`);
+  lines.push(`  if (!isInternalMetricsRequest(req)) {`);
+  lines.push(`    res.status(403).json({ error: { code: "FORBIDDEN", message: "Metrics restricted to internal callers" } });`);
+  lines.push(`    return;`);
+  lines.push(`  }`);
   lines.push(`  res.type("text/plain").send(dumpMetrics());`);
   lines.push(`});`);
   lines.push(``);
@@ -356,6 +376,7 @@ interface Field {
   name: string;
   type: string;
   nullable: boolean;
+  renamed_from?: string | null;
 }
 
 interface Model {
@@ -395,8 +416,18 @@ export function diffModels(oldModels: Model[], newModels: Model[]): string[] {
     const oldFields = new Map(oldModel.fields.map(f => [f.name, f]));
     const newFields = new Map(newModel.fields.map(f => [f.name, f]));
 
+    // Renames first â€” avoid double-counting as add+drop.
+    const renamedOld = new Set<string>();
+    for (const [fname, field] of newFields) {
+      if (field.renamed_from && oldFields.has(field.renamed_from) && !oldFields.has(fname)) {
+        statements.push(\`ALTER TABLE \${tableName} RENAME COLUMN \${field.renamed_from} TO \${fname};\`);
+        renamedOld.add(field.renamed_from);
+      }
+    }
+
     // New columns (backward-compatible)
     for (const [fname, field] of newFields) {
+      if (field.renamed_from && renamedOld.has(field.renamed_from)) continue;
       if (!oldFields.has(fname)) {
         const sqlType = mapType(field.type);
         const nullability = field.nullable ? "" : " NOT NULL DEFAULT (CASE WHEN false THEN NULL ELSE NULL END)";
@@ -406,6 +437,7 @@ export function diffModels(oldModels: Model[], newModels: Model[]): string[] {
 
     // Removed columns (NOT auto-dropped â€” backward compat)
     for (const [fname] of oldFields) {
+      if (renamedOld.has(fname)) continue;
       if (!newFields.has(fname)) {
         statements.push(\`-- WARNING: Column \${tableName}.\${fname} removed from schema. Run manually: ALTER TABLE \${tableName} DROP COLUMN \${fname};\`);
       }

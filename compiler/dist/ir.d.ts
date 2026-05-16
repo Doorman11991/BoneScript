@@ -13,6 +13,8 @@ export interface IRField {
     unique: boolean;
     indexed: boolean;
     default_value: string | null;
+    renamed_from?: string | null;
+    sensitive?: boolean;
 }
 export interface IRIndex {
     fields: string[];

@@ -27,6 +27,7 @@ var TokenKind;
     TokenKind["Arrow"] = "Arrow";
     TokenKind["Pipe"] = "Pipe";
     TokenKind["Semicolon"] = "Semicolon";
+    TokenKind["At"] = "At";
     // Operators
     TokenKind["Equals"] = "Equals";
     TokenKind["EqEq"] = "EqEq";
@@ -514,6 +515,9 @@ class Lexer {
             case ";":
                 this.advance();
                 return { kind: TokenKind.Semicolon, value: ";", loc };
+            case "@":
+                this.advance();
+                return { kind: TokenKind.At, value: "@", loc };
         }
         // String literal
         if (ch === '"') {

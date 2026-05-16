@@ -5,18 +5,30 @@ import { v4 as uuid } from "uuid";
 import { query, queryOne, execute, pool } from "../db";
 import { eventBus } from "../events";
 import { requireAuth, AuthContext } from "../auth";
+import rateLimit from "express-rate-limit";
+import { auditLog } from "../audit";
 import { logger } from "../logger";
 import { counter } from "../metrics";
+import { ReviewCreateSchema, ReviewUpdateSchema } from "../schemas";
 import * as __algorithms from "../algorithms";
 const { shortestPath, topologicalSort, binarySearch, bipartiteMatching, roundRobin, weightedAverage, percentile, rankBy, consistentHash } = __algorithms as any;
 
 export const reviewsRouter = Router();
 
+// Rate limiter from policy declaration
+const __routeRateLimit = rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false });
+
 // CREATE
-reviewsRouter.post("/", requireAuth, async (req: Request, res: Response) => {
+reviewsRouter.post("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // Validate the request body against the generated Zod schema.
+  const __parsed = ReviewCreateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  const __body = __parsed.data;
   try {
     const id = uuid();
-    const { order_id, buyer_id, seller_id, rating, comment } = req.body;
+    const { order_id, buyer_id, seller_id, rating, comment } = __body as any;
     const sql = `INSERT INTO reviews (id, order_id, buyer_id, seller_id, rating, comment) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
     const rows = await query(sql, [id, order_id, buyer_id, seller_id, rating, comment]);
     counter("entity.created", { entity: "Review" });
@@ -27,7 +39,7 @@ reviewsRouter.post("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // READ
-reviewsRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
+reviewsRouter.get("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const row = await queryOne(`SELECT * FROM reviews WHERE id = $1`, [req.params.id]);
     if (!row) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -38,7 +50,7 @@ reviewsRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // LIST
-reviewsRouter.get("/", requireAuth, async (req: Request, res: Response) => {
+reviewsRouter.get("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = Math.min(parseInt(req.query.page_size as string) || 50, 100);
@@ -52,10 +64,26 @@ reviewsRouter.get("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // UPDATE
-reviewsRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
-  const fields = { ...req.body };
-  const sets = Object.keys(fields).map((k, i) => `${k} = $${i + 2}`).join(", ");
-  const values = Object.values(fields);
+const __reviewsUpdatable = new Set<string>(["order_id","buyer_id","seller_id","rating","comment"]);
+reviewsRouter.put("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // 1. Validate body shape and types via Zod (UpdateSchema is partial).
+  const __parsed = ReviewUpdateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  // 2. Reject unknown columns (defense in depth — Zod would already strip them).
+  const __unknown = Object.keys(req.body || {}).filter(k => !__reviewsUpdatable.has(k));
+  if (__unknown.length > 0) {
+    return res.status(400).json({ error: { code: "UNKNOWN_FIELDS", message: `Unknown fields: ${__unknown.join(", ")}`, fields: __unknown } });
+  }
+  // 3. Use the Zod-parsed object as the update set.
+  const fields: Record<string, unknown> = __parsed.data as Record<string, unknown>;
+  if (Object.keys(fields).length === 0) {
+    return res.status(400).json({ error: { code: "NO_FIELDS", message: "No updatable fields supplied" } });
+  }
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
+  const values = keys.map(k => fields[k]);
   const sql = `UPDATE reviews SET ${sets}, updated_at = NOW() WHERE id = $1 RETURNING *`;
   const rows = await query(sql, [req.params.id, ...values]);
   if (rows.length === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -63,7 +91,7 @@ reviewsRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // DELETE
-reviewsRouter.delete("/:id", requireAuth, async (req: Request, res: Response) => {
+reviewsRouter.delete("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const count = await execute(`DELETE FROM reviews WHERE id = $1`, [req.params.id]);
     if (count === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });

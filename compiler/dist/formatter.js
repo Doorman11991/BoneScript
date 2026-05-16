@@ -88,7 +88,7 @@ class Formatter {
         this.indent++;
         if (e.owns.length > 0) {
             if (e.owns.length <= 2) {
-                const fields = e.owns.map(f => `${f.name}: ${this.formatType(f.type)}`).join(", ");
+                const fields = e.owns.map(f => this.formatField(f)).join(", ");
                 this.line(`owns: [${fields}]`);
             }
             else {
@@ -97,7 +97,7 @@ class Formatter {
                 for (let i = 0; i < e.owns.length; i++) {
                     const f = e.owns[i];
                     const comma = i < e.owns.length - 1 ? "," : "";
-                    this.line(`${f.name}: ${this.formatType(f.type)}${comma}`);
+                    this.line(`${this.formatField(f)}${comma}`);
                 }
                 this.indent--;
                 this.line(`]`);
@@ -277,6 +277,14 @@ class Formatter {
             case "TupleType": return `(${t.elements.map(e => this.formatType(e)).join(", ")})`;
             case "UnionType": return t.members.map(m => this.formatType(m)).join(" | ");
         }
+    }
+    formatField(f) {
+        let s = `${f.name}: ${this.formatType(f.type)}`;
+        if (f.renamedFrom)
+            s += ` @renamed_from(${f.renamedFrom})`;
+        if (f.sensitive)
+            s += ` @sensitive`;
+        return s;
     }
     formatExpr(e) {
         switch (e.kind) {

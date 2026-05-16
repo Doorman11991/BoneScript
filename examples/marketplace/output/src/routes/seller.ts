@@ -5,8 +5,11 @@ import { v4 as uuid } from "uuid";
 import { query, queryOne, execute, pool } from "../db";
 import { eventBus } from "../events";
 import { requireAuth, AuthContext } from "../auth";
+import rateLimit from "express-rate-limit";
+import { auditLog } from "../audit";
 import { logger } from "../logger";
 import { counter } from "../metrics";
+import { SellerCreateSchema, SellerUpdateSchema } from "../schemas";
 import * as __algorithms from "../algorithms";
 const { shortestPath, topologicalSort, binarySearch, bipartiteMatching, roundRobin, weightedAverage, percentile, rankBy, consistentHash } = __algorithms as any;
 
@@ -14,11 +17,20 @@ import { transitionSeller, SELLER_INITIAL } from "../state_machines/seller";
 
 export const sellersRouter = Router();
 
+// Rate limiter from policy declaration
+const __routeRateLimit = rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false });
+
 // CREATE
-sellersRouter.post("/", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.post("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // Validate the request body against the generated Zod schema.
+  const __parsed = SellerCreateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  const __body = __parsed.data;
   try {
     const id = uuid();
-    const { name, email, balance, rating } = req.body;
+    const { name, email, balance, rating } = __body as any;
     const state = SELLER_INITIAL;
     const sql = `INSERT INTO sellers (id, name, email, balance, rating, state) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
     const rows = await query(sql, [id, name, email, balance, rating, state]);
@@ -30,7 +42,7 @@ sellersRouter.post("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // READ
-sellersRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.get("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const row = await queryOne(`SELECT * FROM sellers WHERE id = $1`, [req.params.id]);
     if (!row) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -41,7 +53,7 @@ sellersRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // LIST
-sellersRouter.get("/", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.get("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = Math.min(parseInt(req.query.page_size as string) || 50, 100);
@@ -55,17 +67,35 @@ sellersRouter.get("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // UPDATE
-sellersRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
-  const fields = { ...req.body };
+const __sellersUpdatable = new Set<string>(["name","email","balance","rating","state"]);
+sellersRouter.put("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // 1. Validate body shape and types via Zod (UpdateSchema is partial).
+  const __parsed = SellerUpdateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  // 2. Reject unknown columns (defense in depth — Zod would already strip them).
+  const __unknown = Object.keys(req.body || {}).filter(k => !__sellersUpdatable.has(k));
+  if (__unknown.length > 0) {
+    return res.status(400).json({ error: { code: "UNKNOWN_FIELDS", message: `Unknown fields: ${__unknown.join(", ")}`, fields: __unknown } });
+  }
+  // 3. Use the Zod-parsed object as the update set.
+  const fields: Record<string, unknown> = __parsed.data as Record<string, unknown>;
+  if (Object.keys(fields).length === 0) {
+    return res.status(400).json({ error: { code: "NO_FIELDS", message: "No updatable fields supplied" } });
+  }
   // State machine enforcement
   if (fields.state !== undefined) {
     const current = await queryOne<{ state: string }>(`SELECT state FROM sellers WHERE id = $1`, [req.params.id]);
     if (!current) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
-    const tr = transitionSeller(current.state as any, `${current.state}_to_${fields.state}`);
-    if (!tr.ok) return res.status(422).json({ error: { code: "INVALID_TRANSITION", message: tr.error } });
+    // Find the trigger for this state transition
+    const trigger = `${current.state}_to_${fields.state}`;
+    const tr = transitionSeller(current.state as any, trigger);
+    if (!tr.ok) return res.status(422).json({ error: { code: "INVALID_TRANSITION", message: `Cannot transition from ${current.state} to ${fields.state}` } });
   }
-  const sets = Object.keys(fields).map((k, i) => `${k} = $${i + 2}`).join(", ");
-  const values = Object.values(fields);
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
+  const values = keys.map(k => fields[k]);
   const sql = `UPDATE sellers SET ${sets}, updated_at = NOW() WHERE id = $1 RETURNING *`;
   const rows = await query(sql, [req.params.id, ...values]);
   if (rows.length === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -73,7 +103,7 @@ sellersRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // DELETE
-sellersRouter.delete("/:id", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.delete("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const count = await execute(`DELETE FROM sellers WHERE id = $1`, [req.params.id]);
     if (count === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -84,7 +114,7 @@ sellersRouter.delete("/:id", requireAuth, async (req: Request, res: Response) =>
 });
 
 // CAPABILITY: publish_listing [transactional]
-sellersRouter.post("/publish-listing", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.post("/publish-listing", __routeRateLimit, requireAuth, auditLog("publish_listing", "Seller"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   const __client = await pool.connect();
   try {
@@ -100,6 +130,9 @@ sellersRouter.post("/publish-listing", requireAuth, async (req: Request, res: Re
     }
 
     // Preconditions
+    if (!(auth?.actor_id === seller?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == seller.id" } });
+    }
     if (!(seller?.state === "active")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "seller.state == \\\"active\\\"" } });
     }
@@ -130,7 +163,7 @@ sellersRouter.post("/publish-listing", requireAuth, async (req: Request, res: Re
 });
 
 // CAPABILITY: archive_listing [transactional]
-sellersRouter.post("/archive-listing", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.post("/archive-listing", __routeRateLimit, requireAuth, auditLog("archive_listing", "Seller"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   const __client = await pool.connect();
   try {
@@ -146,6 +179,9 @@ sellersRouter.post("/archive-listing", requireAuth, async (req: Request, res: Re
     }
 
     // Preconditions
+    if (!(auth?.actor_id === seller?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == seller.id" } });
+    }
     if (!(seller?.state === "active")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "seller.state == \\\"active\\\"" } });
     }
@@ -173,7 +209,7 @@ sellersRouter.post("/archive-listing", requireAuth, async (req: Request, res: Re
 });
 
 // CAPABILITY: ship_order [transactional]
-sellersRouter.post("/ship-order", requireAuth, async (req: Request, res: Response) => {
+sellersRouter.post("/ship-order", __routeRateLimit, requireAuth, auditLog("ship_order", "Seller"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   const __client = await pool.connect();
   try {
@@ -189,6 +225,9 @@ sellersRouter.post("/ship-order", requireAuth, async (req: Request, res: Respons
     }
 
     // Preconditions
+    if (!(auth?.actor_id === seller?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == seller.id" } });
+    }
     if (!(order?.status === "paid")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "order.status == \\\"paid\\\"" } });
     }

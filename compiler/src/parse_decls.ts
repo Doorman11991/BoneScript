@@ -33,7 +33,37 @@ export function parseField(s: TokenStream): AST.FieldNode {
   const type = parseTypeExpr(s);
   let defaultValue: AST.ExprNode | null = null;
   if (s.match(TokenKind.Equals)) { defaultValue = parseExpr(s); }
-  return { kind: "Field", loc, name, type, defaultValue };
+  // Optional annotations: @renamed_from(old_name), @sensitive
+  let renamedFrom: string | null = null;
+  let sensitive = false;
+  while (s.check(TokenKind.At)) {
+    s.advance();
+    const annoName = parseIdentOrKeyword(s);
+    if (annoName === "renamed_from") {
+      s.expect(TokenKind.LParen, "renamed_from(old_name)");
+      renamedFrom = parseIdentOrKeyword(s);
+      s.expect(TokenKind.RParen, "renamed_from close");
+    } else if (annoName === "sensitive") {
+      // Bare flag annotation. Optional empty parens for forward compat.
+      sensitive = true;
+      if (s.match(TokenKind.LParen)) {
+        s.expect(TokenKind.RParen, "sensitive close");
+      }
+    } else {
+      // Unknown annotation — accept and ignore for forward compat; consume
+      // an optional (...) payload so it parses cleanly.
+      if (s.match(TokenKind.LParen)) {
+        let depth = 1;
+        while (depth > 0 && !s.check(TokenKind.EOF)) {
+          if (s.check(TokenKind.LParen)) depth++;
+          else if (s.check(TokenKind.RParen)) depth--;
+          if (depth > 0) s.advance();
+        }
+        s.expect(TokenKind.RParen, "annotation close");
+      }
+    }
+  }
+  return { kind: "Field", loc, name, type, defaultValue, renamedFrom, sensitive };
 }
 
 export function parseIdentList(s: TokenStream): string[] {

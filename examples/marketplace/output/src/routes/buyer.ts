@@ -5,8 +5,11 @@ import { v4 as uuid } from "uuid";
 import { query, queryOne, execute, pool } from "../db";
 import { eventBus } from "../events";
 import { requireAuth, AuthContext } from "../auth";
+import rateLimit from "express-rate-limit";
+import { auditLog } from "../audit";
 import { logger } from "../logger";
 import { counter } from "../metrics";
+import { BuyerCreateSchema, BuyerUpdateSchema } from "../schemas";
 import * as __algorithms from "../algorithms";
 const { shortestPath, topologicalSort, binarySearch, bipartiteMatching, roundRobin, weightedAverage, percentile, rankBy, consistentHash } = __algorithms as any;
 
@@ -14,11 +17,20 @@ import { transitionBuyer, BUYER_INITIAL } from "../state_machines/buyer";
 
 export const buyersRouter = Router();
 
+// Rate limiter from policy declaration
+const __routeRateLimit = rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false });
+
 // CREATE
-buyersRouter.post("/", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.post("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // Validate the request body against the generated Zod schema.
+  const __parsed = BuyerCreateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  const __body = __parsed.data;
   try {
     const id = uuid();
-    const { name, email, balance } = req.body;
+    const { name, email, balance } = __body as any;
     const state = BUYER_INITIAL;
     const sql = `INSERT INTO buyers (id, name, email, balance, state) VALUES ($1, $2, $3, $4, $5) RETURNING *`;
     const rows = await query(sql, [id, name, email, balance, state]);
@@ -30,7 +42,7 @@ buyersRouter.post("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // READ
-buyersRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.get("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const row = await queryOne(`SELECT * FROM buyers WHERE id = $1`, [req.params.id]);
     if (!row) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -41,7 +53,7 @@ buyersRouter.get("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // LIST
-buyersRouter.get("/", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.get("/", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = Math.min(parseInt(req.query.page_size as string) || 50, 100);
@@ -55,17 +67,35 @@ buyersRouter.get("/", requireAuth, async (req: Request, res: Response) => {
 });
 
 // UPDATE
-buyersRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
-  const fields = { ...req.body };
+const __buyersUpdatable = new Set<string>(["name","email","balance","state"]);
+buyersRouter.put("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
+  // 1. Validate body shape and types via Zod (UpdateSchema is partial).
+  const __parsed = BuyerUpdateSchema.safeParse(req.body);
+  if (!__parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_FAILED", message: "Invalid request body", issues: __parsed.error.flatten() } });
+  }
+  // 2. Reject unknown columns (defense in depth — Zod would already strip them).
+  const __unknown = Object.keys(req.body || {}).filter(k => !__buyersUpdatable.has(k));
+  if (__unknown.length > 0) {
+    return res.status(400).json({ error: { code: "UNKNOWN_FIELDS", message: `Unknown fields: ${__unknown.join(", ")}`, fields: __unknown } });
+  }
+  // 3. Use the Zod-parsed object as the update set.
+  const fields: Record<string, unknown> = __parsed.data as Record<string, unknown>;
+  if (Object.keys(fields).length === 0) {
+    return res.status(400).json({ error: { code: "NO_FIELDS", message: "No updatable fields supplied" } });
+  }
   // State machine enforcement
   if (fields.state !== undefined) {
     const current = await queryOne<{ state: string }>(`SELECT state FROM buyers WHERE id = $1`, [req.params.id]);
     if (!current) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
-    const tr = transitionBuyer(current.state as any, `${current.state}_to_${fields.state}`);
-    if (!tr.ok) return res.status(422).json({ error: { code: "INVALID_TRANSITION", message: tr.error } });
+    // Find the trigger for this state transition
+    const trigger = `${current.state}_to_${fields.state}`;
+    const tr = transitionBuyer(current.state as any, trigger);
+    if (!tr.ok) return res.status(422).json({ error: { code: "INVALID_TRANSITION", message: `Cannot transition from ${current.state} to ${fields.state}` } });
   }
-  const sets = Object.keys(fields).map((k, i) => `${k} = $${i + 2}`).join(", ");
-  const values = Object.values(fields);
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
+  const values = keys.map(k => fields[k]);
   const sql = `UPDATE buyers SET ${sets}, updated_at = NOW() WHERE id = $1 RETURNING *`;
   const rows = await query(sql, [req.params.id, ...values]);
   if (rows.length === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -73,7 +103,7 @@ buyersRouter.put("/:id", requireAuth, async (req: Request, res: Response) => {
 });
 
 // DELETE
-buyersRouter.delete("/:id", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.delete("/:id", __routeRateLimit, requireAuth, async (req: Request, res: Response) => {
   try {
     const count = await execute(`DELETE FROM buyers WHERE id = $1`, [req.params.id]);
     if (count === 0) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -84,7 +114,7 @@ buyersRouter.delete("/:id", requireAuth, async (req: Request, res: Response) => 
 });
 
 // CAPABILITY: place_order [transactional]
-buyersRouter.post("/place-order", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.post("/place-order", __routeRateLimit, requireAuth, auditLog("place_order", "Buyer"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   const __client = await pool.connect();
   try {
@@ -102,6 +132,9 @@ buyersRouter.post("/place-order", requireAuth, async (req: Request, res: Respons
     }
 
     // Preconditions
+    if (!(auth?.actor_id === buyer?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == buyer.id" } });
+    }
     if (!(buyer?.state === "active")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "buyer.state == \\\"active\\\"" } });
     }
@@ -142,7 +175,7 @@ buyersRouter.post("/place-order", requireAuth, async (req: Request, res: Respons
 });
 
 // CAPABILITY: process_payment [transactional]
-buyersRouter.post("/process-payment", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.post("/process-payment", __routeRateLimit, requireAuth, auditLog("process_payment", "Buyer"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   const __client = await pool.connect();
   try {
@@ -158,6 +191,9 @@ buyersRouter.post("/process-payment", requireAuth, async (req: Request, res: Res
     }
 
     // Preconditions
+    if (!(auth?.actor_id === buyer?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == buyer.id" } });
+    }
     if (!(order?.status === "pending")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "order.status == \\\"pending\\\"" } });
     }
@@ -192,7 +228,7 @@ buyersRouter.post("/process-payment", requireAuth, async (req: Request, res: Res
 });
 
 // CAPABILITY: post_review
-buyersRouter.post("/post-review", requireAuth, async (req: Request, res: Response) => {
+buyersRouter.post("/post-review", __routeRateLimit, requireAuth, auditLog("post_review", "Buyer"), async (req: Request, res: Response) => {
   const auth: AuthContext = (req as any).auth;
   try {
     // sync: eventual — effects applied, events queued via outbox
@@ -209,6 +245,9 @@ buyersRouter.post("/post-review", requireAuth, async (req: Request, res: Respons
     }
 
     // Preconditions
+    if (!(auth?.actor_id === buyer?.id)) {
+      return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "caller.id == buyer.id" } });
+    }
     if (!(order?.status === "delivered")) {
       return res.status(422).json({ error: { code: "PRECONDITION_FAILED", message: "order.status == \\\"delivered\\\"" } });
     }

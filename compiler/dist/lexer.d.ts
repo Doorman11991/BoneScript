@@ -21,6 +21,7 @@ export declare enum TokenKind {
     Arrow = "Arrow",
     Pipe = "Pipe",
     Semicolon = "Semicolon",
+    At = "At",
     Equals = "Equals",
     EqEq = "EqEq",
     NotEq = "NotEq",

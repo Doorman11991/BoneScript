@@ -14,10 +14,10 @@ const MODE: EventDeliveryMode =
   (process.env.EVENT_MODE as EventDeliveryMode) || "in_process";
 
 // Events requiring exactly_once delivery (deduplicated)
-const EXACTLY_ONCE_EVENTS = new Set(["PaymentProcessed"]);
+const EXACTLY_ONCE_EVENTS = new Set<string>(["PaymentProcessed"]);
 
 // Events requiring at_least_once delivery (retried until ack)
-const AT_LEAST_ONCE_EVENTS = new Set(["OrderPlaced", "OrderShipped", "OrderCancelled", "ReviewPosted"]);
+const AT_LEAST_ONCE_EVENTS = new Set<string>(["OrderPlaced", "OrderShipped", "OrderCancelled", "ReviewPosted"]);
 
 export interface EventMetadata {
   source: string;

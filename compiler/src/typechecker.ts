@@ -404,6 +404,16 @@ export class TypeChecker {
     const path = expr.path;
     if (path.length === 0) return null;
 
+    // Built-in: `caller` resolves to the authenticated actor's identity.
+    // `caller.id` is a uuid; bare `caller` is a record { id: uuid } for now.
+    if (path[0] === "caller") {
+      const callerType = record("Caller", new Map([
+        ["id", prim("uuid")],
+        ["actor_id", prim("uuid")],
+      ]));
+      return this.resolveFieldPath(callerType, path.slice(1), expr);
+    }
+
     // First segment: look up in context
     let currentType = ctx.lookup(path[0]);
 

@@ -496,6 +496,8 @@ class Lowering {
             unique: false,
             indexed: false,
             default_value: f.defaultValue ? serializeExpr(f.defaultValue) : null,
+            renamed_from: f.renamedFrom ?? null,
+            sensitive: f.sensitive ?? false,
         };
     }
 }

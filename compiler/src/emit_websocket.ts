@@ -29,7 +29,23 @@ export function emitWebSocketServer(system: IR.IRSystem): string {
   lines.push(`import { eventBus } from "./events";`);
   lines.push(`import { logger } from "./logger";`);
   lines.push(``);
-  lines.push(`const JWT_SECRET = process.env.JWT_SECRET || "bonescript-dev-secret-change-in-production";`);
+  // Use the same secret-loading rules as the HTTP middleware.
+  // Refuse to boot in production without JWT_SECRET; warn in dev.
+  lines.push(`const JWT_SECRET = (() => {`);
+  lines.push(`  const secret = process.env.JWT_SECRET;`);
+  lines.push(`  if (!secret) {`);
+  lines.push(`    if (process.env.NODE_ENV === "production") {`);
+  lines.push(`      console.error("[FATAL] JWT_SECRET environment variable is not set. Refusing to start in production.");`);
+  lines.push(`      process.exit(1);`);
+  lines.push(`    }`);
+  lines.push(`    console.warn("[WARN] JWT_SECRET is not set. Using insecure default — do not use in production.");`);
+  lines.push(`    return "bonescript-dev-secret-do-not-use-in-production";`);
+  lines.push(`  }`);
+  lines.push(`  if (secret.length < 32) {`);
+  lines.push(`    console.warn("[WARN] JWT_SECRET is shorter than 32 characters. Use a longer secret in production.");`);
+  lines.push(`  }`);
+  lines.push(`  return secret;`);
+  lines.push(`})();`);
   lines.push(``);
   // Redis pub/sub for multi-instance support
   lines.push(`// Redis pub/sub for multi-instance WebSocket broadcasting`);
@@ -117,7 +133,11 @@ export function emitWebSocketServer(system: IR.IRSystem): string {
   lines.push(``);
   lines.push(`    let userId: string;`);
   lines.push(`    try {`);
-  lines.push(`      const decoded = jwt.verify(token, JWT_SECRET) as { sub: string };`);
+  lines.push(`      const decoded = jwt.verify(token, JWT_SECRET, {`);
+  lines.push(`        algorithms: ["HS256"],`);
+  lines.push(`        maxAge: process.env.JWT_MAX_AGE || "1h",`);
+  lines.push(`      }) as { sub?: unknown };`);
+  lines.push(`      if (typeof decoded.sub !== "string" || decoded.sub.length === 0) throw new Error("invalid sub");`);
   lines.push(`      userId = decoded.sub;`);
   lines.push(`    } catch {`);
   lines.push(`      socket.send(JSON.stringify({ type: "error", message: "Authentication failed" }));`);

@@ -230,6 +230,7 @@ system SimpleShop {
 
   capability publish_listing(seller: Seller, listing: Listing) {
     requires: [
+      caller.id == seller.id,
       seller.state == "active",
       listing.state == "draft",
       listing.seller_id == seller.id,
@@ -244,6 +245,7 @@ system SimpleShop {
 
   capability archive_listing(seller: Seller, listing: Listing) {
     requires: [
+      caller.id == seller.id,
       seller.state == "active",
       listing.seller_id == seller.id,
       listing.state == "active"
@@ -257,6 +259,7 @@ system SimpleShop {
 
   capability place_order(buyer: Buyer, listing: Listing, quantity: uint) {
     requires: [
+      caller.id == buyer.id,
       buyer.state == "active",
       listing.state == "active",
       listing.stock >= quantity,
@@ -275,6 +278,7 @@ system SimpleShop {
 
   capability process_payment(order: Order, buyer: Buyer) {
     requires: [
+      caller.id == buyer.id,
       order.status == "pending",
       order.buyer_id == buyer.id,
       buyer.balance >= order.total
@@ -291,6 +295,7 @@ system SimpleShop {
 
   capability ship_order(seller: Seller, order: Order) {
     requires: [
+      caller.id == seller.id,
       order.status == "paid",
       order.seller_id == seller.id,
       seller.state == "active"
@@ -305,6 +310,7 @@ system SimpleShop {
 
   capability cancel_order(order: Order) {
     requires: [
+      caller.id == order.buyer_id,
       order.status == "pending"
     ]
     effects: [
@@ -317,6 +323,7 @@ system SimpleShop {
 
   capability post_review(buyer: Buyer, order: Order, rating: uint, comment: string) {
     requires: [
+      caller.id == buyer.id,
       order.status == "delivered",
       order.buyer_id == buyer.id,
       rating >= 1,

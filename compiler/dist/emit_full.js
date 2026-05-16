@@ -138,15 +138,23 @@ class FullEmitter {
         }
         // 5. Source: main entry point
         files.push({ path: "src/index.ts", content: (0, emit_runtime_1.emitIndex)(system), language: "typescript", source_module: "root" });
-        // 6. SQL migrations — run schema emitter ONCE, then match by model name
+        // 6. SQL migrations — run schema emitter ONCE, then match by model name.
+        // Multiple modules (e.g. an api_service AND its backing data_store) can
+        // reference the same model. We dedupe by output path so each table only
+        // appears once in migrations/ and once in the migrate.ts blocks list.
         const schemas = [];
+        const seenPaths = new Set();
         const allSchemaFiles = this.schemaEmitter.emit(system);
         for (const mod of system.modules) {
             if (mod.kind === "data_store" || mod.kind === "api_service") {
                 for (const model of mod.models) {
                     const schemaFile = allSchemaFiles.find(f => f.path.includes(toSnakeCase(model.name)) && f.language === "sql");
                     if (schemaFile) {
-                        files.push({ ...schemaFile, path: `migrations/${schemaFile.path.replace("schema/", "")}` });
+                        const targetPath = `migrations/${schemaFile.path.replace("schema/", "")}`;
+                        if (seenPaths.has(targetPath))
+                            continue;
+                        seenPaths.add(targetPath);
+                        files.push({ ...schemaFile, path: targetPath });
                         schemas.push(schemaFile.content);
                     }
                 }

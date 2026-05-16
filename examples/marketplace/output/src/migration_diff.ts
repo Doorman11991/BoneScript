@@ -7,6 +7,7 @@ interface Field {
   name: string;
   type: string;
   nullable: boolean;
+  renamed_from?: string | null;
 }
 
 interface Model {
@@ -46,8 +47,18 @@ export function diffModels(oldModels: Model[], newModels: Model[]): string[] {
     const oldFields = new Map(oldModel.fields.map(f => [f.name, f]));
     const newFields = new Map(newModel.fields.map(f => [f.name, f]));
 
+    // Renames first â€” avoid double-counting as add+drop.
+    const renamedOld = new Set<string>();
+    for (const [fname, field] of newFields) {
+      if (field.renamed_from && oldFields.has(field.renamed_from) && !oldFields.has(fname)) {
+        statements.push(`ALTER TABLE ${tableName} RENAME COLUMN ${field.renamed_from} TO ${fname};`);
+        renamedOld.add(field.renamed_from);
+      }
+    }
+
     // New columns (backward-compatible)
     for (const [fname, field] of newFields) {
+      if (field.renamed_from && renamedOld.has(field.renamed_from)) continue;
       if (!oldFields.has(fname)) {
         const sqlType = mapType(field.type);
         const nullability = field.nullable ? "" : " NOT NULL DEFAULT (CASE WHEN false THEN NULL ELSE NULL END)";
@@ -57,6 +68,7 @@ export function diffModels(oldModels: Model[], newModels: Model[]): string[] {
 
     // Removed columns (NOT auto-dropped â€” backward compat)
     for (const [fname] of oldFields) {
+      if (renamedOld.has(fname)) continue;
       if (!newFields.has(fname)) {
         statements.push(`-- WARNING: Column ${tableName}.${fname} removed from schema. Run manually: ALTER TABLE ${tableName} DROP COLUMN ${fname};`);
       }

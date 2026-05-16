@@ -22,16 +22,21 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = parseInt(process.env.PORT || "3000");
 
+// Trust the immediate hop's X-Forwarded-* headers when running behind a
+// load balancer / k8s ingress. Override with TRUST_PROXY=<n> for multi-hop
+// (e.g. "2" for ingress + service mesh). Set to "false" to disable.
+const __trust = process.env.TRUST_PROXY ?? "loopback, linklocal, uniquelocal";
+if (__trust === "false") app.set("trust proxy", false);
+else if (/^\d+$/.test(__trust)) app.set("trust proxy", Number(__trust));
+else app.set("trust proxy", __trust);
+
 // Middleware
 app.use(helmet());
 // CORS: restrict to ALLOWED_ORIGINS env var (comma-separated). Defaults to same-origin only.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+const __allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
 app.use(cors({
-  origin: allowedOrigins.length > 0
-    ? (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
-        else cb(new Error("Not allowed by CORS"));
-      }
+  origin: __allowedOrigins.length > 0
+    ? (origin, cb) => { if (!origin || __allowedOrigins.includes(origin)) cb(null, true); else cb(new Error("Not allowed by CORS")); }
     : false,
   credentials: true,
 }));
