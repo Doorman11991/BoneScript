@@ -5,11 +5,13 @@
 
 import { SystemEvent } from "./events";
 
-export type NotifyProvider = "resend" | "sendgrid" | "log";
+export type NotifyProvider = "resend" | "sendgrid" | "webhook" | "log";
 
 const PROVIDER = (process.env.NOTIFY_PROVIDER || "log") as NotifyProvider;
 const API_KEY = process.env.NOTIFY_API_KEY || "";
 const FROM_EMAIL = process.env.NOTIFY_FROM_EMAIL || "noreply@example.com";
+const WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL || "";
+const WEBHOOK_SECRET = process.env.NOTIFY_WEBHOOK_SECRET || "";
 
 export interface NotifyMessage {
   to: string;
@@ -59,6 +61,80 @@ async function sendEmail(msg: NotifyMessage): Promise<void> {
     if (!res.ok) throw new Error(`SendGrid error: ${res.status}`);
     return;
   }
+  if (PROVIDER === "webhook") {
+    // Email-style notifications still flow through the webhook so the receiver sees a uniform shape.
+    await sendWebhook({ kind: "email", to: msg.to, subject: msg.subject, body: msg.body });
+    return;
+  }
+}
+
+import { createHmac } from "crypto";
+
+function signPayload(body: string): string {
+  if (!WEBHOOK_SECRET) return "";
+  return createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
+}
+
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === "localhost" || h === "0.0.0.0" || h === "::" || h === "::1") return true;
+  // IPv4 dotted quad
+  const m4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m4) {
+    const a = Number(m4[1]), b = Number(m4[2]);
+    if (a === 127) return true;            // loopback
+    if (a === 10) return true;             // RFC1918
+    if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+    if (a === 192 && b === 168) return true;          // RFC1918
+    if (a === 169 && b === 254) return true;          // link-local / cloud metadata
+    if (a === 0) return true;
+    return false;
+  }
+  // IPv6 — strip optional brackets and zone suffix.
+  const v6 = h.replace(/^\[|\]$/g, "").split("%")[0];
+  if (/^fe[89ab][0-9a-f]?:/i.test(v6)) return true; // link-local fe80::/10
+  if (/^f[cd][0-9a-f]?:/i.test(v6)) return true;     // unique-local fc00::/7
+  return false;
+}
+
+/**
+ * Send a JSON payload to NOTIFY_WEBHOOK_URL.
+ *
+ * Headers:
+ *   Content-Type: application/json
+ *   X-BoneScript-Signature: <hex hmac-sha256(body, WEBHOOK_SECRET)>  (only if secret set)
+ *   X-BoneScript-Event: <event type>  (set by event handlers)
+ */
+export async function sendWebhook(payload: Record<string, unknown>, eventType?: string): Promise<void> {
+  if (PROVIDER === "log") {
+    console.log(`[notify:webhook] ${eventType || payload.kind || "event"}`, JSON.stringify(payload).slice(0, 200));
+    return;
+  }
+  if (!WEBHOOK_URL) {
+    throw new Error("NOTIFY_WEBHOOK_URL is not configured");
+  }
+  // Validate URL — only http(s), and reject loopback / RFC1918 /
+  // link-local hosts to make this server unusable as an SSRF probe.
+  // Set NOTIFY_WEBHOOK_ALLOW_PRIVATE=1 to opt out (e.g. for internal CI
+  // setups where the webhook receiver is on the same network).
+  let url: URL;
+  try { url = new URL(WEBHOOK_URL); }
+  catch { throw new Error("Invalid NOTIFY_WEBHOOK_URL"); }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error(`Webhook URL protocol must be http(s), got ${url.protocol}`);
+  }
+  if (process.env.NOTIFY_WEBHOOK_ALLOW_PRIVATE !== "1") {
+    if (isPrivateHost(url.hostname)) {
+      throw new Error(`Webhook URL host is loopback / private / link-local: ${url.hostname}. Set NOTIFY_WEBHOOK_ALLOW_PRIVATE=1 to allow.`);
+    }
+  }
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const sig = signPayload(body);
+  if (sig) headers["X-BoneScript-Signature"] = sig;
+  if (eventType) headers["X-BoneScript-Event"] = eventType;
+  const res = await fetch(WEBHOOK_URL, { method: "POST", headers, body });
+  if (!res.ok) throw new Error(`Webhook delivery failed: ${res.status}`);
 }
 
 // Handler for OrderPlaced

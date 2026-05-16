@@ -4,6 +4,86 @@ All notable changes to `bonescript-compiler` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-05-16
+
+### Fixed
+- **`relation X: belongs_to Y` now generates working SQL.** Previously the
+  lowering created an `IRRelation` that referenced an `<entity>_id` column
+  in a FOREIGN KEY constraint without ever adding that column to the model.
+  Generated migrations rejected with `column "seller_id" referenced in
+  foreign key constraint does not exist` unless users manually duplicated
+  the FK column in `owns:`. Now the lowering synthesizes the FK column
+  (uuid, NOT NULL, indexed) for every `belongs_to`. If a user already
+  declared the column, their declaration wins.
+- **Prisma type mapping** (`emit_prisma.ts`):
+  - `uint` and `int` no longer use the invalid `Int @db.BigInt` combination.
+    They now map to plain `Int` (Postgres `INTEGER`).
+  - `updated_at` columns now have `@default(now()) @updatedAt` instead of
+    just `@updatedAt`. The previous output failed at INSERT time because
+    `@updatedAt` only fires on update.
+- **SQLite `RETURNING *` shim** (`emit_sqlite.ts`):
+  - The shim previously assumed `params[0]` held the row id for both INSERT
+    and UPDATE. UPDATEs from the capability emitter use the shape
+    `UPDATE t SET col = $1 WHERE id = $2`, so re-selecting by `params[0]`
+    returned no rows. Fixed by parsing the WHERE clause for the id param.
+  - The placeholder translator was a naive `$N → ?` regex replacement that
+    broke when SQL referenced placeholders out of order
+    (`UPDATE t SET name = $2 WHERE id = $1`). Now rewrites the params array
+    to match the new placeholder order.
+- **SQLite `transaction()` no longer silently fails for async work.**
+  better-sqlite3 transactions are synchronous, and the previous wrapper
+  passed an `async () => ...` callback that returned an unresolved promise
+  to `db.transaction()` — the transaction would commit before any async
+  work finished. The wrapper now warns about this in the JSDoc and only
+  awaits captured promises *after* the transaction commits, with a clear
+  comment that async work runs outside the transaction.
+- **Webhook URL validation now actually checks for SSRF**
+  (`emit_notify.ts`). The comment claimed "reject loopback / RFC1918 /
+  link-local" but only the protocol was checked. Now blocks
+  `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`, `169.254.0.0/16` (link-local / cloud metadata),
+  IPv6 loopback `::1`, link-local `fe80::/10`, and unique-local
+  `fc00::/7`. Set `NOTIFY_WEBHOOK_ALLOW_PRIVATE=1` to opt out (e.g. for
+  internal CI setups).
+
+### Changed
+- **SQLite target rebranded as schema-only.** The previous output claimed
+  to be a "self-contained backend" but only emitted migrations and a DB
+  client — `npm run dev` and `npm run start` failed because there was no
+  `src/index.ts` or routes. The generated `package.json` now only includes
+  `migrate` script + better-sqlite3 / dotenv / uuid dependencies, and the
+  README is updated to describe what's actually produced. A future release
+  will add full route generation that emits SQLite-compatible SQL.
+- **`bonec validate` auto-detects** the output directory if no path is
+  passed. Looks for `output/`, `output-sqlite/`, `output-nakama/` (in that
+  order) and uses the first one with a `tsconfig.json`.
+- **CLI rejects `--no-sdk` / `--no-openapi` / `--no-seed` for non-Express
+  targets** instead of silently ignoring them.
+- **CLI help text clarifies which targets are complete vs schema-only.**
+
+### Tests
+- New `test_prisma.ts` runs `npx prisma validate` and `npx prisma format`
+  against the generated schema. Catches the type-mapping bugs above.
+- New `test_relations.ts` verifies `belongs_to` generates working SQL
+  across Postgres, SQLite, and Prisma — including a live SQLite test that
+  inserts records with FK references and confirms FK enforcement.
+- `test_sqlite.ts` now exercises the actual generated `db.ts` with
+  RETURNING * in both UPDATE shapes (capability and runtime). Previously
+  step 8 was a string-grep that didn't catch the param-index bug.
+
+### Notes for downstream consumers
+- The `belongs_to` fix changes the IR shape in a backward-compatible way.
+  Existing `.bone` files that manually duplicate the FK column in `owns:`
+  continue to work — the synthesizer skips columns that are already
+  declared.
+- The Prisma fix means `int @db.BigInt` is no longer emitted. If you were
+  relying on the (broken) BigInt mapping, bump your tolerated integer size
+  in your application code, or wait for a future release that adds an
+  explicit `@db.bigint` annotation in BoneScript syntax.
+- The SQLite target is now explicitly schema-only. If you were generating
+  with `--target sqlite` and trying to run the result, switch to the
+  default Express target until full SQLite route generation lands.
+
 ## [0.8.0] - 2026-05-16
 
 ### Added

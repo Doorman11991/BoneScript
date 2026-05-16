@@ -94,14 +94,14 @@ cd output && npx prisma migrate dev --name init && npx prisma generate
 
 Produces a standalone `prisma/schema.prisma` with proper type mappings, relations, indexes, and infrastructure models. Use this when you want BoneScript's modeling power with Prisma's migration and client tooling.
 
-### SQLite target (zero-config local dev)
+### SQLite target (schema-only)
 
 ```bash
 bonec compile shop.bone --target sqlite
-cd output-sqlite && npm install && npm run migrate && npm run dev
+cd output-sqlite && npm install && npm run migrate
 ```
 
-Produces a complete backend with no external services — no Postgres, no Redis, no Docker. The whole database is a single file you can copy, version, or back up. Ideal for local development, demos, integration tests, and small single-node deployments.
+Produces SQLite-flavored migrations and a typed `better-sqlite3` DB client. **Schema-only** — no Express routes, no auth, no SDK. Use this when you want BoneScript's modeling layer over SQLite without the full backend. Full SQLite route generation is on the roadmap.
 
 ---
 
@@ -150,10 +150,10 @@ output/
 ```bash
 bonec compile <file> [options]
 
---target express     Express/PostgreSQL output (default)
+--target express     Express/PostgreSQL output (default — complete backend)
 --target nakama      Nakama TypeScript runtime output
 --target prisma      Prisma schema output (schema.prisma)
---target sqlite      SQLite-flavored Express output (zero external services)
+--target sqlite      SQLite migrations + typed DB client (schema-only)
 
 --no-sdk             Skip sdk/client.ts and sdk/react.ts generation
 --no-openapi         Skip openapi.yaml, schema.graphql, Postman collection
@@ -263,7 +263,7 @@ extension_point calculate_fee(order: Order) {
 | `bonec compile <file>` | Full 7-stage compilation → runnable project |
 | `bonec compile <file> --target nakama` | Compile to Nakama TypeScript runtime |
 | `bonec compile <file> --target prisma` | Compile to Prisma schema |
-| `bonec compile <file> --target sqlite` | Compile to SQLite (zero external services) |
+| `bonec compile <file> --target sqlite` | Compile to SQLite migrations + DB client (schema-only) |
 | `bonec check <file>` | Validate without generating code |
 | `bonec validate [output-dir]` | Type-check generated output (runs `tsc --noEmit`) |
 | `bonec fmt <file>` | Format in place |
@@ -484,8 +484,8 @@ examples/       Example .bone programs
 
 ## Status
 
-Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.8.0.
+Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.8.1.
 
-The compiler pipeline is complete and deterministic. All generated code compiles and runs. The VS Code extension provides real-time feedback.
+The compiler pipeline is complete and deterministic. All generated code from the Express target compiles and runs. The SQLite target is currently schema-only. The VS Code extension provides real-time feedback.
 
-Not yet: VS Code marketplace listing, end-to-end tests with a live database.
+Not yet: VS Code marketplace listing, end-to-end tests with a live database, full SQLite route generation.

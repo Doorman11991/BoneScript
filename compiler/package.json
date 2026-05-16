@@ -1,6 +1,6 @@
 {
   "name": "bonescript-compiler",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,6 +19,8 @@
     "!src/test_sqlite.ts",
     "!src/test_notify.ts",
     "!src/test_react.ts",
+    "!src/test_prisma.ts",
+    "!src/test_relations.ts",
     "LICENSE",
     "README.md"
   ],
@@ -27,7 +29,7 @@
     "prepare": "npm run build",
     "prepublishOnly": "npm run build",
     "start": "ts-node src/cli.ts",
-    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts && ts-node src/test_nakama.ts && ts-node src/test_sqlite.ts && ts-node src/test_notify.ts && ts-node src/test_react.ts"
+    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts && ts-node src/test_nakama.ts && ts-node src/test_sqlite.ts && ts-node src/test_notify.ts && ts-node src/test_react.ts && ts-node src/test_prisma.ts && ts-node src/test_relations.ts"
   },
   "keywords": [
     "bonescript",

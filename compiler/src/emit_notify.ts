@@ -97,6 +97,33 @@ export function emitNotifyService(system: IR.IRSystem): string {
   lines.push(`  return createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");`);
   lines.push(`}`);
   lines.push(``);
+  // Private-host detection. Catches loopback (127/8, ::1, 0.0.0.0), RFC1918
+  // (10/8, 172.16/12, 192.168/16), link-local (169.254/16, fe80::/10) and
+  // unique-local IPv6 (fc00::/7). DNS hostnames that resolve to private
+  // addresses are not blocked here — that requires a DNS lookup and a
+  // dual-stack check; we leave that to the deployer's network policy.
+  lines.push(`function isPrivateHost(host: string): boolean {`);
+  lines.push(`  const h = host.toLowerCase();`);
+  lines.push(`  if (h === "localhost" || h === "0.0.0.0" || h === "::" || h === "::1") return true;`);
+  lines.push(`  // IPv4 dotted quad`);
+  lines.push(`  const m4 = h.match(/^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$/);`);
+  lines.push(`  if (m4) {`);
+  lines.push(`    const a = Number(m4[1]), b = Number(m4[2]);`);
+  lines.push(`    if (a === 127) return true;            // loopback`);
+  lines.push(`    if (a === 10) return true;             // RFC1918`);
+  lines.push(`    if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918`);
+  lines.push(`    if (a === 192 && b === 168) return true;          // RFC1918`);
+  lines.push(`    if (a === 169 && b === 254) return true;          // link-local / cloud metadata`);
+  lines.push(`    if (a === 0) return true;`);
+  lines.push(`    return false;`);
+  lines.push(`  }`);
+  lines.push(`  // IPv6 — strip optional brackets and zone suffix.`);
+  lines.push(`  const v6 = h.replace(/^\\[|\\]$/g, "").split("%")[0];`);
+  lines.push(`  if (/^fe[89ab][0-9a-f]?:/i.test(v6)) return true; // link-local fe80::/10`);
+  lines.push(`  if (/^f[cd][0-9a-f]?:/i.test(v6)) return true;     // unique-local fc00::/7`);
+  lines.push(`  return false;`);
+  lines.push(`}`);
+  lines.push(``);
   lines.push(`/**`);
   lines.push(` * Send a JSON payload to NOTIFY_WEBHOOK_URL.`);
   lines.push(` *`);
@@ -113,12 +140,20 @@ export function emitNotifyService(system: IR.IRSystem): string {
   lines.push(`  if (!WEBHOOK_URL) {`);
   lines.push(`    throw new Error("NOTIFY_WEBHOOK_URL is not configured");`);
   lines.push(`  }`);
-  lines.push(`  // Validate URL — only http(s) and reject obvious attempts at SSRF (loopback / RFC1918).`);
+  lines.push(`  // Validate URL — only http(s), and reject loopback / RFC1918 /`);
+  lines.push(`  // link-local hosts to make this server unusable as an SSRF probe.`);
+  lines.push(`  // Set NOTIFY_WEBHOOK_ALLOW_PRIVATE=1 to opt out (e.g. for internal CI`);
+  lines.push(`  // setups where the webhook receiver is on the same network).`);
   lines.push(`  let url: URL;`);
   lines.push(`  try { url = new URL(WEBHOOK_URL); }`);
   lines.push(`  catch { throw new Error("Invalid NOTIFY_WEBHOOK_URL"); }`);
   lines.push(`  if (url.protocol !== "https:" && url.protocol !== "http:") {`);
   lines.push(`    throw new Error(\`Webhook URL protocol must be http(s), got \${url.protocol}\`);`);
+  lines.push(`  }`);
+  lines.push(`  if (process.env.NOTIFY_WEBHOOK_ALLOW_PRIVATE !== "1") {`);
+  lines.push(`    if (isPrivateHost(url.hostname)) {`);
+  lines.push(`      throw new Error(\`Webhook URL host is loopback / private / link-local: \${url.hostname}. Set NOTIFY_WEBHOOK_ALLOW_PRIVATE=1 to allow.\`);`);
+  lines.push(`    }`);
   lines.push(`  }`);
   lines.push(`  const body = JSON.stringify(payload);`);
   lines.push(`  const headers: Record<string, string> = { "Content-Type": "application/json" };`);

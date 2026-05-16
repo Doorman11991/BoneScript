@@ -80,7 +80,7 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.8.0");
+  console.log("BoneScript compiler v0.8.1");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
@@ -96,10 +96,15 @@ function showHelp() {
   console.log("");
   console.log("compile options:");
   console.log("  --target <name>        Output target (default: express)");
-  console.log("                         Options: express, nakama, prisma, sqlite");
-  console.log("  --no-sdk               Skip SDK generation");
-  console.log("  --no-openapi           Skip OpenAPI spec generation");
-  console.log("  --no-seed              Skip seed file generation");
+  console.log("                         Options:");
+  console.log("                           express  - Full Express + Postgres backend (complete)");
+  console.log("                           nakama   - Nakama TypeScript runtime");
+  console.log("                           prisma   - Prisma schema (schema.prisma) only");
+  console.log("                           sqlite   - SQLite migrations + DB client (schema only,");
+  console.log("                                      no routes/auth — see output README)");
+  console.log("  --no-sdk               Skip SDK generation (express target only)");
+  console.log("  --no-openapi           Skip OpenAPI spec generation (express target only)");
+  console.log("  --no-seed              Skip seed file generation (express target only)");
   console.log("");
   console.log("init options:");
   console.log("  bonec init <name> --domain <name>  Scaffold from a domain template");
@@ -308,16 +313,25 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
   }
 
   if (target === "nakama") {
+    if (_noSdk || _noOpenApi || _noSeed) {
+      console.error(`The --no-sdk, --no-openapi, and --no-seed flags only apply to --target express. Ignoring.`);
+    }
     runCompileNakama(source, resolved);
     return;
   }
 
   if (target === "prisma") {
+    if (_noSdk || _noOpenApi || _noSeed) {
+      console.error(`The --no-sdk, --no-openapi, and --no-seed flags only apply to --target express. Ignoring.`);
+    }
     runCompilePrisma(source, resolved);
     return;
   }
 
   if (target === "sqlite") {
+    if (_noSdk || _noOpenApi || _noSeed) {
+      console.error(`The --no-sdk, --no-openapi, and --no-seed flags only apply to --target express. Ignoring.`);
+    }
     runCompileSqlite(source, resolved);
     return;
   }
@@ -841,7 +855,24 @@ function runCompilePrisma(source: string, resolved: string) {
 // ─── Validate ─────────────────────────────────────────────────────────────────
 
 function runValidate(args: string[]) {
-  const outputDir = args[0] ? path.resolve(args[0]) : path.resolve("output");
+  let outputDir: string;
+  if (args[0]) {
+    outputDir = path.resolve(args[0]);
+  } else {
+    // Auto-detect: try output/, then output-sqlite/, then output-nakama/.
+    const candidates = ["output", "output-sqlite", "output-nakama"];
+    const found = candidates
+      .map(c => path.resolve(c))
+      .find(p => fs.existsSync(path.join(p, "tsconfig.json")));
+    if (!found) {
+      console.error("Error: No generated output directory found.");
+      console.error("Looked for: " + candidates.join(", ") + " in " + process.cwd());
+      console.error("Pass an explicit path: bonec validate <dir>");
+      process.exit(1);
+    }
+    outputDir = found;
+    console.log(`(detected output directory: ${path.basename(outputDir)})\n`);
+  }
 
   if (!fs.existsSync(outputDir)) {
     console.error(`Error: Output directory not found: ${outputDir}`);

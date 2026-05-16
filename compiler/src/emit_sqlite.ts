@@ -220,10 +220,16 @@ export function emitSqliteDbClient(system: IR.IRSystem): string {
     `}`,
     ``,
     `// Translate Postgres-style $1, $2, ... placeholders to SQLite ? placeholders.`,
-    `// The generated route handlers use $N because the Postgres backend is the`,
-    `// canonical target; this keeps the surface uniform.`,
-    `function translateSql(sql: string): string {`,
-    `  return sql.replace(/\\$(\\d+)/g, "?");`,
+    `// We can't just regex-replace because Postgres allows out-of-order references`,
+    `// (e.g. "WHERE id = $1 AND name = $2" vs "SET col = $2 WHERE id = $1"). We rebuild`,
+    `// the params array so that each ? is paired with the correct value.`,
+    `function translateSql(sql: string, params: any[]): { sql: string; params: any[] } {`,
+    `  const newParams: any[] = [];`,
+    `  const newSql = sql.replace(/\\$(\\d+)/g, (_m, n) => {`,
+    `    newParams.push(params[parseInt(n, 10) - 1]);`,
+    `    return "?";`,
+    `  });`,
+    `  return { sql: newSql, params: newParams };`,
     `}`,
     ``,
     `// Strip Postgres-only RETURNING * — better-sqlite3 returns the inserted/updated`,
@@ -243,29 +249,48 @@ export function emitSqliteDbClient(system: IR.IRSystem): string {
     `  return null;`,
     `}`,
     ``,
+    // Parse the WHERE clause to find the param index that holds the id. The
+    // generated SQL uses two shapes:
+    //   - emit_runtime PUT:    "UPDATE t SET ... WHERE id = $1"     → idIdx = 1
+    //   - emit_capability:     "UPDATE t SET col = $1 WHERE id = $2" → idIdx = 2
+    // For INSERT the row id is always $1 by convention.
+    `function findIdParamIndex(sql: string, params: any[]): any {`,
+    `  // Look for "WHERE id = $N" or "WHERE id = ?" (after translation).`,
+    `  const m = sql.match(/WHERE\\s+id\\s*=\\s*\\$(\\d+)/i);`,
+    `  if (m) {`,
+    `    const idx = parseInt(m[1], 10) - 1;`,
+    `    return params[idx];`,
+    `  }`,
+    `  // Translated form: count which "?" corresponds to the WHERE id.`,
+    `  const beforeWhere = sql.split(/WHERE\\s+id\\s*=\\s*\\?/i)[0] || "";`,
+    `  const placeholdersBeforeId = (beforeWhere.match(/\\?/g) || []).length;`,
+    `  return params[placeholdersBeforeId];`,
+    `}`,
+    ``,
     `export async function query<T = any>(text: string, params: any[] = []): Promise<T[]> {`,
     `  const db = getDb();`,
     `  const { sql: stripped, hadReturning } = stripReturning(text);`,
-    `  const sql = translateSql(stripped);`,
+    `  const { sql, params: translatedParams } = translateSql(stripped, params);`,
     `  const trimmed = sql.trim().toUpperCase();`,
     `  if (trimmed.startsWith("SELECT") || trimmed.startsWith("WITH")) {`,
-    `    return db.prepare(sql).all(...params) as T[];`,
+    `    return db.prepare(sql).all(...translatedParams) as T[];`,
     `  }`,
     `  // INSERT / UPDATE / DELETE`,
     `  const stmt = db.prepare(sql);`,
-    `  const info = stmt.run(...params);`,
+    `  const info = stmt.run(...translatedParams);`,
     `  if (hadReturning) {`,
     `    const table = extractTable(sql);`,
     `    if (!table) return [];`,
     `    if (trimmed.startsWith("INSERT")) {`,
-    `      // Look up by id (which is in params[0] for our generated INSERT shape)`,
+    `      // Generated INSERTs have id as the first column → params[0].`,
     `      const id = params[0];`,
     `      const row = db.prepare(\`SELECT * FROM \${table} WHERE id = ?\`).get(id);`,
     `      return row ? [row as T] : [];`,
     `    }`,
     `    if (trimmed.startsWith("UPDATE")) {`,
-    `      // The id parameter for our generated UPDATE shape is params[0] (WHERE id = $1).`,
-    `      const id = params[0];`,
+    `      // Find the id from the WHERE clause regardless of param order.`,
+    `      const id = findIdParamIndex(stripped, params);`,
+    `      if (id === undefined) return [];`,
     `      const row = db.prepare(\`SELECT * FROM \${table} WHERE id = ?\`).get(id);`,
     `      return row ? [row as T] : [];`,
     `    }`,
@@ -282,17 +307,43 @@ export function emitSqliteDbClient(system: IR.IRSystem): string {
     `export async function execute(text: string, params: any[] = []): Promise<number> {`,
     `  const db = getDb();`,
     `  const { sql: stripped } = stripReturning(text);`,
-    `  const sql = translateSql(stripped);`,
-    `  const info = db.prepare(sql).run(...params);`,
+    `  const { sql, params: translatedParams } = translateSql(stripped, params);`,
+    `  const info = db.prepare(sql).run(...translatedParams);`,
     `  return info.changes;`,
     `}`,
     ``,
-    `export async function transaction<T>(fn: (client: any) => Promise<T>): Promise<T> {`,
+    `// Run a function inside a SQLite transaction.`,
+    `//`,
+    `// IMPORTANT: better-sqlite3 transactions are synchronous. The callback runs`,
+    `// to completion before COMMIT — but if you do "await" inside it for a Promise`,
+    `// other than another query()/execute(), the transaction will commit before`,
+    `// the awaited work finishes.`,
+    `//`,
+    `// In practice this is fine: query()/execute() above are async only at the`,
+    `// type level; their bodies are synchronous because better-sqlite3 is.`,
+    `// The transaction will be safely committed once the callback returns, and`,
+    `// any chained query/execute calls inside it run on the same database in the`,
+    `// same transaction.`,
+    `//`,
+    `// Don't put fetch(), setTimeout, or other genuinely-async work inside fn.`,
+    `export async function transaction<T>(fn: (client: { query: typeof query; execute: typeof execute }) => Promise<T> | T): Promise<T> {`,
     `  const db = getDb();`,
-    `  // better-sqlite3 transactions are synchronous; we adapt with deasync-style`,
-    `  // immediate execution. The fn here uses query/execute which read the same db.`,
-    `  const txn = db.transaction(async () => await fn({ query: query, execute: execute }));`,
-    `  return await txn();`,
+    `  let result!: T;`,
+    `  let promise: Promise<T> | null = null;`,
+    `  const txn = db.transaction(() => {`,
+    `    const r = fn({ query, execute });`,
+    `    if (r instanceof Promise) {`,
+    `      // Capture the promise; await outside the synchronous transaction.`,
+    `      // Note: this means async work inside fn runs OUTSIDE the transaction,`,
+    `      // which may be a bug in caller code. Better to keep fn synchronous.`,
+    `      promise = r;`,
+    `      return;`,
+    `    }`,
+    `    result = r as T;`,
+    `  });`,
+    `  txn();`,
+    `  if (promise) return await promise;`,
+    `  return result;`,
     `}`,
     ``,
     `// Compatibility shim: the Postgres path uses pool.connect()/release() for nested`,
@@ -415,36 +466,24 @@ export function emitSqliteMigration(_system: IR.IRSystem, schemas: string[]): st
 // ─── Package.json (SQLite flavor) ─────────────────────────────────────────────
 
 export function emitSqlitePackageJson(system: IR.IRSystem): string {
+  // Schema-only target. Scripts only include what we actually emit.
   const pkg = {
     name: toSnakeCase(system.name),
     version: system.version,
     private: true,
     scripts: {
       build: "tsc",
-      start: "node dist/index.js",
-      dev: "ts-node src/index.ts",
       migrate: "ts-node src/migrate.ts",
     },
     dependencies: {
-      express: "4.22.2",
       "better-sqlite3": "11.5.0",
       uuid: "10.0.0",
-      cors: "2.8.5",
-      helmet: "8.0.0",
-      "express-rate-limit": "7.5.0",
-      jsonwebtoken: "9.0.2",
       dotenv: "16.4.7",
-      "node-cron": "3.0.3",
-      zod: "3.23.8",
     },
     devDependencies: {
-      "@types/express": "4.17.21",
       "@types/node": "20.14.0",
       "@types/better-sqlite3": "7.6.11",
-      "@types/cors": "2.8.17",
-      "@types/jsonwebtoken": "9.0.7",
       "@types/uuid": "10.0.0",
-      "@types/node-cron": "3.0.11",
       typescript: "5.6.3",
       "ts-node": "10.9.2",
     },
@@ -518,45 +557,64 @@ export class SqliteEmitter {
   }
 
   private emitEnvExample(system: IR.IRSystem): string {
-    return `# ${system.name} (SQLite target)
-
+    return `# ${system.name} (SQLite schema target)
+#
 # Path to the SQLite database file. Defaults to ./<system_name>.db
 SQLITE_PATH=./${toSnakeCase(system.name)}.db
-
-PORT=3000
-NODE_ENV=development
-
-JWT_SECRET=
-EVENT_MODE=in_process
 `;
   }
 
   private emitReadme(system: IR.IRSystem): string {
-    return `# ${system.name} (SQLite target)
+    return `# ${system.name} (SQLite schema target)
 
 Generated by BoneScript compiler. Source hash: ${system.source_hash}
+
+## What this target produces
+
+- **Schema-only output**: SQLite-flavored migrations (\`migrations/*.sql\`)
+  for every entity, plus the audit log and event outbox.
+- A **typed database client** (\`src/db.ts\`) that wraps better-sqlite3 with
+  the same \`query()\` / \`queryOne()\` / \`execute()\` / \`transaction()\`
+  surface as the Postgres target. Postgres-style \`$N\` placeholders are
+  translated to SQLite's \`?\`, and \`RETURNING *\` is emulated by re-selecting
+  the row by id.
+- A **migration runner** (\`src/migrate.ts\`) with a \`schema_migrations\`
+  ledger so re-running is safe.
+
+## What this target does NOT produce
+
+This target is intentionally schema-only. It does not generate:
+
+- Express routes, auth middleware, websocket server, or \`src/index.ts\`
+- The notification, audit, batch, or cron services
+- OpenAPI / GraphQL / Postman / SDK / React hooks
+
+For a complete runnable backend, use the default Express target
+(\`bonec compile <file>\`). The Express target generates Postgres-flavored SQL
+that uses \`JSONB\`, \`gen_random_uuid()\`, \`NOW()\`, and other
+Postgres-specific features that don't have direct SQLite equivalents in the
+generated route handlers. Bridging that gap is on the roadmap.
 
 ## Quick Start
 
 \`\`\`bash
 npm install
 npm run migrate
-npm run dev
 \`\`\`
 
-The database file will be created at \`./${toSnakeCase(system.name)}.db\` by default.
-Override with the \`SQLITE_PATH\` environment variable.
+The database file will be created at \`./${toSnakeCase(system.name)}.db\` by
+default. Override with the \`SQLITE_PATH\` environment variable.
 
-## Why SQLite
+You can then build your own application on top of \`src/db.ts\` — it exposes
+\`query<T>()\`, \`queryOne<T>()\`, \`execute()\`, \`transaction()\`, and a
+pool-shaped object.
 
-This target produces a self-contained backend with no external services:
-- No Postgres / Redis to start
-- No Docker
-- The whole database is one file you can copy, version, or back up easily
+## Roadmap
 
-It's ideal for local development, demos, integration tests, and small
-single-node deployments. For production multi-writer workloads, use the
-default Express target which generates a Postgres-backed project.
+- Generated routes that use the SQLite-translated SQL surface (no JSONB, no
+  \`NOW()\`, no array operators)
+- Capability bodies translated to SQLite-compatible SQL
+- Auth middleware that doesn't depend on Postgres
 `;
   }
 }

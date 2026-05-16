@@ -179,10 +179,77 @@ function run(): void {
     ok("Generated db.ts has placeholder translation, RETURNING shim, and WAL pragma");
   } catch (e) { fail("Inspect db.ts", e); summary(); return; }
 
-  // Cleanup
-  try { db.close(); fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+  // 9. Behavioral test of the generated db.ts query() function. Compile it
+  // to JS and require() it, pointing it at our test database via SQLITE_PATH.
+  // First close the test's own connection so the harness can open the file.
+  try { db.close(); } catch {}
 
-  summary();
+  try {
+    const dbTsContent = fs.readFileSync(path.join(outDir, "src/db.ts"), "utf-8");
+
+    // Resolve better-sqlite3 from the compiler's node_modules (where the test
+    // runner installed it) and embed an absolute path. The temp output dir
+    // doesn't have its own node_modules.
+    const sqlitePkgPath = require.resolve("better-sqlite3").replace(/\\/g, "\\\\");
+    const stripped = dbTsContent
+      .replace(/^import Database from "better-sqlite3";$/m, `const Database = require(${JSON.stringify(sqlitePkgPath)});`)
+      .replace(/^import \* as path from "path";$/m, "const path = require('path');");
+
+    // Strip TypeScript annotations.
+    const ts = require("typescript");
+    const transpiled = ts.transpileModule(stripped, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    }).outputText;
+
+    const harness = path.join(outDir, "src", "db.test.js");
+    fs.writeFileSync(harness, transpiled, "utf-8");
+    delete require.cache[harness];
+
+    process.env.SQLITE_PATH = path.join(outDir, "test.db");
+    const dbModule = require(harness);
+
+    // INSERT via generated query() — RETURNING * should give back the row
+    const insertSql = "INSERT INTO items (id, name, quantity, available) VALUES ($1, $2, $3, $4) RETURNING *";
+    const insertedAsync = dbModule.query(insertSql, ["aaa-bbb-ccc", "Test", 7, 1]);
+    return insertedAsync.then((inserted: any[]) => {
+      if (inserted.length === 0) throw new Error("INSERT RETURNING returned no rows");
+      if (inserted[0].name !== "Test") throw new Error("INSERT row mismatch: " + JSON.stringify(inserted[0]));
+      ok("Generated query() handles INSERT RETURNING *");
+
+      // UPDATE in the emit_capability format: "UPDATE t SET col = $1 WHERE id = $2"
+      const updSql = "UPDATE items SET quantity = $1 WHERE id = $2 RETURNING *";
+      return dbModule.query(updSql, [42, "aaa-bbb-ccc"]).then((updated: any[]) => {
+        if (updated.length === 0) throw new Error("UPDATE RETURNING returned no rows — RETURNING shim broken");
+        if (updated[0].quantity !== 42) throw new Error("UPDATE returned wrong row: " + JSON.stringify(updated[0]));
+        ok("Generated query() handles UPDATE RETURNING * (capability shape: SET col=$1 WHERE id=$2)");
+
+        // UPDATE in the emit_runtime format: "UPDATE t SET col=$2, col2=$3 WHERE id=$1"
+        const updRuntimeSql = "UPDATE items SET name = $2 WHERE id = $1 RETURNING *";
+        return dbModule.query(updRuntimeSql, ["aaa-bbb-ccc", "Renamed"]).then((updated2: any[]) => {
+          if (updated2.length === 0) throw new Error("runtime-shape UPDATE RETURNING returned no rows");
+          if (updated2[0].name !== "Renamed") throw new Error("UPDATE returned wrong row: " + JSON.stringify(updated2[0]));
+          ok("Generated query() handles UPDATE RETURNING * (runtime shape: WHERE id=$1)");
+
+          // Cleanup. The harness's module-level Database holds an open file
+          // handle on Windows; close it before we try to rmdir the temp.
+          try { dbModule.pool.end(); } catch {}
+          try { fs.unlinkSync(harness); } catch {}
+          try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+          summary();
+        });
+      });
+    }).catch((e: unknown) => {
+      fail("Generated db.ts behavior", e);
+      try { dbModule.pool.end(); } catch {}
+      try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+      summary();
+    });
+  } catch (e) {
+    fail("Set up generated db.ts harness", e);
+    try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+    summary();
+    return;
+  }
 }
 
 function summary() {

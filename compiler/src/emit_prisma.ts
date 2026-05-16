@@ -50,8 +50,13 @@ function toPrismaNativeType(irType: string): string | null {
     case "bytes": return null;
     case "timestamp": return "@db.Timestamptz";
     case "float": return "@db.DoublePrecision";
-    case "uint": return "@db.BigInt";
-    case "int": return "@db.BigInt";
+    // BoneScript `uint` and `int` map to Prisma `Int`. Prisma rejects
+    // `Int @db.BigInt` (BigInt requires the Prisma `BigInt` type), so we use
+    // no native type and let Prisma map to the default Postgres `INTEGER`.
+    // If a caller needs 64-bit ints they should use the `int` IR type with a
+    // future `@db.bigint` annotation — TBD.
+    case "uint": return null;
+    case "int": return null;
     default: return null;
   }
 }
@@ -253,6 +258,9 @@ export class PrismaEmitter {
     } else if (field.name === "created_at" || (field.type === "timestamp" && field.name.includes("created"))) {
       attrs.push("@default(now())");
     } else if (field.name === "updated_at") {
+      // @updatedAt only fires on update — we also need a default for create
+      // or the NOT NULL column has no value at INSERT time.
+      attrs.push("@default(now())");
       attrs.push("@updatedAt");
     } else if (field.default_value) {
       const dv = this.mapDefaultValue(field.default_value, field.type);

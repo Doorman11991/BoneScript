@@ -246,6 +246,32 @@ export class Lowering {
       fields.push(this.lowerField(f));
     }
 
+    // Auto-add foreign key columns for `belongs_to` relations.
+    //
+    // Without this, generated migrations reference a column that doesn't exist
+    // (e.g. `FOREIGN KEY (seller_id) REFERENCES sellers(id)` when no seller_id
+    // is declared in `owns:`). Users were having to duplicate the FK in
+    // `owns:` to make it work; we now synthesize it.
+    //
+    // If the user already declared a column with the same name (the legacy
+    // pattern), we don't add a duplicate — their declaration wins so they
+    // can override nullability or add @sensitive.
+    const existingFieldNames = new Set(fields.map(f => f.name));
+    for (const rel of entity.relations) {
+      if (rel.relationType !== "belongs_to") continue;
+      const fkName = toSnakeCase(rel.target) + "_id";
+      if (existingFieldNames.has(fkName)) continue;
+      fields.push({
+        name: fkName,
+        type: "uuid",
+        nullable: false,
+        unique: false,
+        indexed: true,
+        default_value: null,
+      });
+      existingFieldNames.add(fkName);
+    }
+
     // Add derived fields as generated columns (stored: false = virtual)
     const derivedFields: IR.IRField[] = entity.derived.map(d => ({
       name: d.name,
