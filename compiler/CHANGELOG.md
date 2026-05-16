@@ -4,6 +4,27 @@ All notable changes to `bonescript-compiler` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-05-16
+
+### Added
+- **Prisma schema emitter** (`--target prisma`). Compiles `.bone` files to a
+  complete `prisma/schema.prisma` with proper type mappings, `@id`, `@default`,
+  `@unique`, `@updatedAt`, native type annotations (`@db.Uuid`,
+  `@db.Timestamptz`, etc.), relation directives, junction table models for
+  many-to-many, and infrastructure models (`AuditLog`, `EventOutbox`).
+  Usage: `bonec compile app.bone --target prisma`
+- **`bonec validate [dir]` command.** Runs `tsc --noEmit` against a generated
+  output directory to verify the generated TypeScript compiles cleanly. Useful
+  for CI pipelines. Exits with code 1 on type errors.
+- `PrismaEmitter` exported from the public API for programmatic use.
+
+### Notes for downstream consumers
+- The `prisma` target is additive — it does not affect the default `express`
+  target output. Use `--target prisma` to get a standalone Prisma schema
+  alongside (or instead of) the full Express project.
+- `bonec validate` requires `npm install` to have been run in the output
+  directory first (it needs `node_modules/` for type resolution).
+
 ## [0.6.2] - 2026-05-16
 
 ### Repo hygiene

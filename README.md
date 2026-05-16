@@ -85,6 +85,15 @@ cd output-nakama && npm install && npm run build
 # Copy build/ to your Nakama runtime path
 ```
 
+### Prisma target (schema only)
+
+```bash
+bonec compile shop.bone --target prisma
+cd output && npx prisma migrate dev --name init && npx prisma generate
+```
+
+Produces a standalone `prisma/schema.prisma` with proper type mappings, relations, indexes, and infrastructure models. Use this when you want BoneScript's modeling power with Prisma's migration and client tooling.
+
 ---
 
 ## What Gets Generated
@@ -134,6 +143,7 @@ bonec compile <file> [options]
 
 --target express     Express/PostgreSQL output (default)
 --target nakama      Nakama TypeScript runtime output
+--target prisma      Prisma schema output (schema.prisma)
 
 --no-sdk             Skip sdk/client.ts generation
 --no-openapi         Skip openapi.yaml, schema.graphql, Postman collection
@@ -242,7 +252,9 @@ extension_point calculate_fee(order: Order) {
 |---------|-------------|
 | `bonec compile <file>` | Full 7-stage compilation → runnable project |
 | `bonec compile <file> --target nakama` | Compile to Nakama TypeScript runtime |
+| `bonec compile <file> --target prisma` | Compile to Prisma schema |
 | `bonec check <file>` | Validate without generating code |
+| `bonec validate [output-dir]` | Type-check generated output (runs `tsc --noEmit`) |
 | `bonec fmt <file>` | Format in place |
 | `bonec watch <file>` | Recompile on save |
 | `bonec init <name>` | Scaffold from a domain template |
@@ -316,6 +328,26 @@ Commented-out `node-cron` stubs for each `sync: batch` capability. Uncomment and
 ### Audit Log (`migrations/audit_log.sql` + `src/audit.ts`)
 
 Automatically applied to routes on modules with `audit: true` in their policy. Records actor, action, entity type/id, payload, IP, and user agent.
+
+### Prisma Schema (`prisma/schema.prisma`)
+
+When compiled with `--target prisma`, produces a complete Prisma schema:
+
+```prisma
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @updatedAt @db.Timestamptz
+  name        String
+  price       Int      @db.BigInt
+  stock       Int      @db.BigInt
+  state       String
+
+  @@map("products")
+}
+```
+
+Includes all entities, relations (`@relation` with cascade deletes), indexes, junction tables for many-to-many, and infrastructure models (audit log, event outbox). Use with `npx prisma migrate dev` and `npx prisma generate`.
 
 ---
 
@@ -403,7 +435,7 @@ examples/       Example .bone programs
 
 ## Status
 
-Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.5.8.
+Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.7.0.
 
 The compiler pipeline is complete and deterministic. All generated code compiles and runs. The VS Code extension provides real-time feedback.
 

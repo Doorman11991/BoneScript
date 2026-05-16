@@ -13,6 +13,7 @@ import { Lowering } from "./lowering";
 import { ConstraintSolver } from "./solver";
 import { FullEmitter } from "./emit_full";
 import { NakamaEmitter } from "./emit_nakama";
+import { PrismaEmitter } from "./emit_prisma";
 import { Verifier } from "./verifier";
 import { ModuleLoader } from "./module_loader";
 import { Formatter } from "./formatter";
@@ -67,6 +68,9 @@ function main() {
     case "verify-determinism":
       requireFile(args[1], runVerifyDeterminism);
       break;
+    case "validate":
+      runValidate(args.slice(1));
+      break;
     default:
       console.error(`Unknown command: ${command}`);
       showHelp();
@@ -75,11 +79,12 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.6.2");
+  console.log("BoneScript compiler v0.7.0");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
   console.log("  bonec check <file>     Lex + parse + type check (no codegen)");
+  console.log("  bonec validate [dir]   Type-check generated output (runs tsc --noEmit)");
   console.log("  bonec lex <file>       Show token stream");
   console.log("  bonec parse <file>     Show AST");
   console.log("  bonec ir <file>        Show IR (JSON)");
@@ -90,7 +95,7 @@ function showHelp() {
   console.log("");
   console.log("compile options:");
   console.log("  --target <name>        Output target (default: express)");
-  console.log("                         Options: express, nakama");
+  console.log("                         Options: express, nakama, prisma");
   console.log("  --no-sdk               Skip SDK generation");
   console.log("  --no-openapi           Skip OpenAPI spec generation");
   console.log("  --no-seed              Skip seed file generation");
@@ -278,7 +283,7 @@ function runInit(args: string[]) {
 
 function runCompile(source: string, resolved: string, extraArgs: string[] = []) {
   // Parse --target flag (default: express)
-  let target: "express" | "nakama" = "express";
+  let target: "express" | "nakama" | "prisma" = "express";
   // Parse optional feature flags (future enhancement — documented for now)
   let _noSdk = false;
   let _noOpenApi = false;
@@ -286,8 +291,8 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
   for (let i = 0; i < extraArgs.length; i++) {
     if (extraArgs[i] === "--target" && extraArgs[i + 1]) {
       const t = extraArgs[i + 1];
-      if (t !== "express" && t !== "nakama") {
-        console.error(`Unknown target '${t}'. Valid targets: express, nakama`);
+      if (t !== "express" && t !== "nakama" && t !== "prisma") {
+        console.error(`Unknown target '${t}'. Valid targets: express, nakama, prisma`);
         process.exit(1);
       }
       target = t;
@@ -303,6 +308,11 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
 
   if (target === "nakama") {
     runCompileNakama(source, resolved);
+    return;
+  }
+
+  if (target === "prisma") {
+    runCompilePrisma(source, resolved);
     return;
   }
 
@@ -761,5 +771,127 @@ function runVerifyDeterminism(source: string, resolved: string) {
         process.exit(1);
       }
     }
+  }
+}
+
+// ─── Compile (Prisma target) ──────────────────────────────────────────────────
+
+function runCompilePrisma(source: string, resolved: string) {
+  try {
+    const tokens = new Lexer(source).tokenize();
+    console.log(`  [1/5] Lexed: ${tokens.length} tokens`);
+
+    const loader = new ModuleLoader();
+    const loadResult = loader.load(resolved);
+    if (loadResult.errors.length > 0) {
+      for (const e of loadResult.errors.slice(0, 10)) {
+        console.log(`         ${path.basename(e.file)}: ${e.error.message}`);
+      }
+      if (!loadResult.ast) process.exit(1);
+    }
+    const ast = loadResult.ast!;
+    console.log(`  [2/5] Parsed: ${ast.systems.length} system(s)`);
+
+    const typeErrors = new TypeChecker().check(ast);
+    if (typeErrors.length > 0) {
+      console.log(`  [3/5] Type check: ${typeErrors.length} error(s)`);
+      for (const err of typeErrors) {
+        console.log(`         ${err.code} at ${err.loc.line}:${err.loc.column}: ${err.message}`);
+      }
+    } else {
+      console.log(`  [3/5] Type check: v (0 errors)`);
+    }
+
+    const sourceHash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+    const irSystems = new Lowering().lower(ast, sourceHash);
+    console.log(`  [4/5] Lowered to IR: ${irSystems.reduce((s, sys) => s + sys.modules.length, 0)} modules`);
+
+    const emitter = new PrismaEmitter();
+    const allFiles: ReturnType<typeof emitter.emit> = [];
+    for (const sys of irSystems) {
+      allFiles.push(...emitter.emit(sys));
+    }
+    console.log(`  [5/5] Prisma emit: ${allFiles.length} file(s)`);
+
+    const outputDir = path.resolve(path.dirname(resolved), "output");
+    for (const f of allFiles) {
+      const outPath = path.join(outputDir, f.path);
+      const dir = path.dirname(outPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(outPath, f.content, "utf-8");
+    }
+
+    console.log(`\nv Prisma compilation complete. ${allFiles.length} file(s) written to output/prisma/`);
+    console.log(`\nNext steps:`);
+    console.log(`  cd output`);
+    console.log(`  npx prisma migrate dev --name init`);
+    console.log(`  npx prisma generate`);
+  } catch (e: any) {
+    console.error(`x ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// ─── Validate ─────────────────────────────────────────────────────────────────
+
+function runValidate(args: string[]) {
+  const outputDir = args[0] ? path.resolve(args[0]) : path.resolve("output");
+
+  if (!fs.existsSync(outputDir)) {
+    console.error(`Error: Output directory not found: ${outputDir}`);
+    console.error("Run 'bonec compile <file>' first to generate output.");
+    process.exit(1);
+  }
+
+  const tsconfigPath = path.join(outputDir, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) {
+    console.error(`Error: No tsconfig.json found in ${outputDir}`);
+    console.error("The output directory doesn't appear to be a BoneScript-generated project.");
+    process.exit(1);
+  }
+
+  // Check if node_modules exists — if not, suggest npm install
+  const nodeModulesPath = path.join(outputDir, "node_modules");
+  if (!fs.existsSync(nodeModulesPath)) {
+    console.error(`Error: node_modules/ not found in ${outputDir}`);
+    console.error("Run 'npm install' in the output directory first:");
+    console.error(`  cd ${outputDir} && npm install`);
+    process.exit(1);
+  }
+
+  console.log(`Validating generated TypeScript in ${outputDir}...`);
+  console.log(``);
+
+  const { execSync } = require("child_process");
+
+  try {
+    // Run tsc --noEmit to type-check without producing output
+    execSync("npx tsc --noEmit", {
+      cwd: outputDir,
+      stdio: "pipe",
+      encoding: "utf-8",
+    });
+    console.log(`v Validation passed. Generated code compiles cleanly.`);
+  } catch (e: any) {
+    // tsc returns non-zero on type errors — parse and display them
+    const output = (e.stdout || "") + (e.stderr || "");
+    const errorLines = output.split("\n").filter((l: string) => l.trim().length > 0);
+    const errorCount = errorLines.filter((l: string) => /error TS\d+/.test(l)).length;
+
+    console.error(`x Validation failed: ${errorCount} TypeScript error(s)\n`);
+
+    // Show up to 20 errors for readability
+    const displayLines = errorLines.slice(0, 40);
+    for (const line of displayLines) {
+      console.error(`  ${line}`);
+    }
+    if (errorLines.length > 40) {
+      console.error(`  ... and ${errorLines.length - 40} more lines`);
+    }
+
+    console.error(``);
+    console.error(`To see all errors, run:`);
+    console.error(`  cd ${outputDir} && npx tsc --noEmit`);
+    process.exit(1);
   }
 }

@@ -16,6 +16,7 @@ export { ConstraintSolver } from "./solver";
 export type { SolverResult } from "./solver";
 export { FullEmitter } from "./emit_full";
 export { NakamaEmitter } from "./emit_nakama";
+export { PrismaEmitter } from "./emit_prisma";
 export type { NakamaEmittedFile } from "./emit_nakama";
 export type { EmittedFile } from "./emitter";
 export { Verifier } from "./verifier";
