@@ -1,39 +1,41 @@
-# ─── Dependencies ────────────────────────────────────────────────────────────
+# --- Dependencies ------------------------------------------------------------
 node_modules/
 .pnp
 .pnp.js
 
-# ─── Build outputs ───────────────────────────────────────────────────────────
-# Note: compiler/dist/ is kept because the LSP depends on it as a local package.
-# Once the compiler is published to npm, add compiler/dist/ here.
+# --- Build outputs -----------------------------------------------------------
+# compiler/dist/ is built on demand by the `prepare` lifecycle hook, so local
+# installs of file:../compiler in lsp/ and vscode-ext/ trigger `npm run build`
+# automatically. Published npm tarballs are built by `prepublishOnly`.
+compiler/dist/
 lsp/dist/
 vscode-ext/out/
 *.js.map
 *.d.ts.map
 
-# ─── Compiled JS/DTS artifacts in src/ (should only be in dist/) ─────────────
+# --- Compiled JS/DTS artifacts in src/ (should only be in dist/) ------------
 # These appear when ts-node or tsc emits into the source directory by mistake.
 compiler/src/*.js
 compiler/src/*.d.ts
 compiler/src/**/*.js
 compiler/src/**/*.d.ts
 
-# ─── Generated output (bone compile produces this) ───────────────────────────
+# --- Generated output (bone compile produces this) --------------------------
 examples/*/output/
 examples/output/
 
-# ─── Test scratch files ───────────────────────────────────────────────────────
+# --- Test scratch files ------------------------------------------------------
 examples/test_*.bone
 examples/marketplace/run_tests.ts
 
-# ─── VS Code extension package ───────────────────────────────────────────────
+# --- VS Code extension package ----------------------------------------------
 *.vsix
 
-# ─── Python scripts used during development ──────────────────────────────────
+# --- Python scripts used during development ---------------------------------
 lsp/src/gen_server*.py
 compiler/src/*.py
 
-# ─── Environment files ───────────────────────────────────────────────────────
+# --- Environment files -------------------------------------------------------
 .env
 .env.local
 .env.*.local
@@ -42,27 +44,27 @@ examples/**/.env
 examples/**/output/.env
 examples/marketplace/output/.env
 
-# ─── Logs ────────────────────────────────────────────────────────────────────
+# --- Logs --------------------------------------------------------------------
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ─── OS files ────────────────────────────────────────────────────────────────
+# --- OS files ----------------------------------------------------------------
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ─── Editor files ────────────────────────────────────────────────────────────
+# --- Editor files ------------------------------------------------------------
 .vscode/settings.json
 .vscode/launch.json
 .idea/
 *.swp
 *.swo
 
-# ─── TypeScript cache ────────────────────────────────────────────────────────
+# --- TypeScript cache --------------------------------------------------------
 *.tsbuildinfo
 
-# ─── Coverage ────────────────────────────────────────────────────────────────
+# --- Coverage ----------------------------------------------------------------
 coverage/
 .nyc_output/

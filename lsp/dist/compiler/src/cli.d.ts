@@ -1,4 +1,0 @@
-/**
- * BoneScript compiler CLI
- */
-export {};

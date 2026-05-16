@@ -4,6 +4,27 @@ All notable changes to `bonescript-compiler` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-05-16
+
+### Repo hygiene
+- Untracked `compiler/dist/` from git. The build now happens automatically:
+  - On `npm install` of `file:../compiler` from sibling packages (lsp, vscode-ext)
+    via a new `prepare` lifecycle script.
+  - On `npm publish` via the existing `prepublishOnly` script.
+  - On a fresh clone, contributors get the build by running `npm install` in
+    any consuming package or by running `npm run build` in `compiler/`.
+- Fixed the `repository`, `homepage`, and `bugs` URLs in `compiler/package.json`
+  — they pointed at a stale `dantheman181/bonescript` GitHub URL. Now point at
+  the actual repo, `Doorman11991/BoneScript`. The npm package metadata for
+  v0.6.2 reflects this; users on v0.6.1 will see the wrong URLs in `npm view`
+  output but the package contents are otherwise identical.
+- Rewrote `.gitignore` to use ASCII section separators instead of mojibaked
+  UTF-8 box-drawing characters.
+
+### Notes for downstream consumers
+- No code changes. The published tarball contents are identical to 0.6.1
+  except for the metadata fields above. Upgrading is purely cosmetic.
+
 ## [0.6.1] - 2026-05-16
 
 ### Security
@@ -116,5 +137,6 @@ example type-checks cleanly, and `npm audit` reports zero vulnerabilities.
 See git history. Versions 0.5.4 → 0.5.8 were published in the v0.5 line and
 are superseded by 0.6.0.
 
+[0.6.2]: https://www.npmjs.com/package/bonescript-compiler/v/0.6.2
 [0.6.1]: https://www.npmjs.com/package/bonescript-compiler/v/0.6.1
 [0.6.0]: https://www.npmjs.com/package/bonescript-compiler/v/0.6.0
