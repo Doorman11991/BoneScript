@@ -31,7 +31,32 @@ export function emitNotifyService(system: IR.IRSystem): string {
   lines.push(`  body: string;`);
   lines.push(`}`);
   lines.push(``);
+  // HTML-escape helper. Used to render arbitrary event payload data inside an
+  // HTML email body without enabling HTML/JS injection in clients that render
+  // it. Subject lines are also escaped for consistency.
+  lines.push(`function escapeHtml(s: string): string {`);
+  lines.push(`  return s`);
+  lines.push(`    .replace(/&/g, "&amp;")`);
+  lines.push(`    .replace(/</g, "&lt;")`);
+  lines.push(`    .replace(/>/g, "&gt;")`);
+  lines.push(`    .replace(/"/g, "&quot;")`);
+  lines.push(`    .replace(/'/g, "&#39;");`);
+  lines.push(`}`);
+  lines.push(``);
+  // Conservative email validation. Rejects empty input, multiple addresses,
+  // and CRLF that would let a caller inject extra headers into the request body
+  // sent to Resend / SendGrid.
+  lines.push(`const __EMAIL_RE = /^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$/;`);
+  lines.push(`function isValidEmail(addr: string): boolean {`);
+  lines.push(`  if (!addr || addr.length > 254) return false;`);
+  lines.push(`  if (/[\\r\\n]/.test(addr)) return false;`);
+  lines.push(`  return __EMAIL_RE.test(addr);`);
+  lines.push(`}`);
+  lines.push(``);
   lines.push(`async function sendEmail(msg: NotifyMessage): Promise<void> {`);
+  lines.push(`  if (!isValidEmail(msg.to)) {`);
+  lines.push("    throw new Error(`Invalid recipient address: ${msg.to.slice(0, 64)}`);");
+  lines.push(`  }`);
   lines.push(`  if (PROVIDER === "log") {`);
   lines.push(`    console.log(\`[notify] \${msg.subject} → \${msg.to}\`);`);
   lines.push(`    return;`);
@@ -57,15 +82,18 @@ export function emitNotifyService(system: IR.IRSystem): string {
   lines.push(`}`);
   lines.push(``);
 
-  // Per-event handlers
+  // Per-event handlers — payload is JSON-stringified and HTML-escaped before
+  // being placed inside <pre> so payload values like "<script>..." can't break
+  // out of the body.
   for (const event of system.events) {
     const eventName = toPascalCase(event.name);
     lines.push(`// Handler for ${eventName}`);
     lines.push(`export async function notify${eventName}(event: SystemEvent, recipientEmail: string): Promise<void> {`);
+    lines.push(`  const __payload = escapeHtml(JSON.stringify(event.payload, null, 2));`);
     lines.push(`  await sendEmail({`);
     lines.push(`    to: recipientEmail,`);
     lines.push(`    subject: "${eventName} notification",`);
-    lines.push(`    body: \`<p>Event <strong>${eventName}</strong> occurred.</p><pre>\${JSON.stringify(event.payload, null, 2)}</pre>\`,`);
+    lines.push("    body: `<p>Event <strong>${escapeHtml(\"" + eventName + "\")}</strong> occurred.</p><pre>${__payload}</pre>`,");
     lines.push(`  });`);
     lines.push(`}`);
     lines.push(``);

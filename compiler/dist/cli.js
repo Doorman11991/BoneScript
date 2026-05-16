@@ -94,7 +94,7 @@ function main() {
     }
 }
 function showHelp() {
-    console.log("BoneScript compiler v0.6.0");
+    console.log("BoneScript compiler v0.6.1");
     console.log("");
     console.log("Usage:");
     console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
