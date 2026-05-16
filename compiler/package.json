@@ -9,6 +9,9 @@
   },
   "files": [
     "dist/**/*",
+    "!dist/test*.js",
+    "!dist/test*.js.map",
+    "!dist/test*.d.ts",
     "src/**/*.ts",
     "!src/test.ts",
     "!src/test_typechecker.ts",
