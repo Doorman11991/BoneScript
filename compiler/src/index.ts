@@ -17,6 +17,7 @@ export type { SolverResult } from "./solver";
 export { FullEmitter } from "./emit_full";
 export { NakamaEmitter } from "./emit_nakama";
 export { PrismaEmitter } from "./emit_prisma";
+export { SqliteEmitter } from "./emit_sqlite";
 export type { NakamaEmittedFile } from "./emit_nakama";
 export type { EmittedFile } from "./emitter";
 export { Verifier } from "./verifier";
@@ -44,6 +45,7 @@ export { mergeWithExisting, extractImplementations, validateExtensions } from ".
 // New emitters
 export { emitOpenApiSpec, emitOpenApiJson } from "./emit_openapi";
 export { emitTypescriptSdk, emitSdkPackageJson } from "./emit_sdk";
+export { emitReactHooks } from "./emit_react";
 export { emitZodSchemas } from "./emit_zod";
 export { emitPostmanCollection } from "./emit_postman";
 export { emitSeedFile } from "./emit_seed";

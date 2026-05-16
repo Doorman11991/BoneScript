@@ -34,6 +34,7 @@ import { emitTestSuite } from "./emit_tests";
 import { emitDockerfile, emitDockerignore, emitK8sDeployment, emitGithubActions } from "./emit_deploy";
 import { emitOpenApiSpec } from "./emit_openapi";
 import { emitTypescriptSdk } from "./emit_sdk";
+import { emitReactHooks } from "./emit_react";
 import { emitZodSchemas } from "./emit_zod";
 import { emitPostmanCollection } from "./emit_postman";
 import { emitSeedFile } from "./emit_seed";
@@ -213,6 +214,8 @@ export class FullEmitter {
     // 13. TypeScript SDK
     if (!options.noSdk) {
       files.push({ path: "sdk/client.ts", content: emitTypescriptSdk(system), language: "typescript", source_module: "sdk" });
+      // React hooks layered on top of the SDK
+      files.push(emitReactHooks(system));
     }
 
     // 14. Zod schemas
@@ -288,10 +291,17 @@ EVENT_WORKER_INTERVAL_MS=1000
 REQUEST_TIMEOUT_MS=30000
 
 # --- Notifications ---
-# NOTIFY_PROVIDER=log|resend|sendgrid (default: log)
+# NOTIFY_PROVIDER=log|resend|sendgrid|webhook (default: log)
 NOTIFY_PROVIDER=log
 NOTIFY_API_KEY=
 NOTIFY_FROM_EMAIL=noreply@example.com
+
+# --- Webhook delivery (only when NOTIFY_PROVIDER=webhook) ---
+# Endpoint that receives event payloads as application/json POST.
+NOTIFY_WEBHOOK_URL=
+# Optional HMAC-SHA256 secret. When set, requests include
+# 'X-BoneScript-Signature: <hex digest>' so receivers can verify integrity.
+NOTIFY_WEBHOOK_SECRET=
 `;
   }
 

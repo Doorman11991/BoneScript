@@ -94,6 +94,15 @@ cd output && npx prisma migrate dev --name init && npx prisma generate
 
 Produces a standalone `prisma/schema.prisma` with proper type mappings, relations, indexes, and infrastructure models. Use this when you want BoneScript's modeling power with Prisma's migration and client tooling.
 
+### SQLite target (zero-config local dev)
+
+```bash
+bonec compile shop.bone --target sqlite
+cd output-sqlite && npm install && npm run migrate && npm run dev
+```
+
+Produces a complete backend with no external services — no Postgres, no Redis, no Docker. The whole database is a single file you can copy, version, or back up. Ideal for local development, demos, integration tests, and small single-node deployments.
+
 ---
 
 ## What Gets Generated
@@ -144,8 +153,9 @@ bonec compile <file> [options]
 --target express     Express/PostgreSQL output (default)
 --target nakama      Nakama TypeScript runtime output
 --target prisma      Prisma schema output (schema.prisma)
+--target sqlite      SQLite-flavored Express output (zero external services)
 
---no-sdk             Skip sdk/client.ts generation
+--no-sdk             Skip sdk/client.ts and sdk/react.ts generation
 --no-openapi         Skip openapi.yaml, schema.graphql, Postman collection
 --no-seed            Skip src/seed.ts generation
 ```
@@ -253,6 +263,7 @@ extension_point calculate_fee(order: Order) {
 | `bonec compile <file>` | Full 7-stage compilation → runnable project |
 | `bonec compile <file> --target nakama` | Compile to Nakama TypeScript runtime |
 | `bonec compile <file> --target prisma` | Compile to Prisma schema |
+| `bonec compile <file> --target sqlite` | Compile to SQLite (zero external services) |
 | `bonec check <file>` | Validate without generating code |
 | `bonec validate [output-dir]` | Type-check generated output (runs `tsc --noEmit`) |
 | `bonec fmt <file>` | Format in place |
@@ -306,6 +317,39 @@ const product = await client.createProduct({ name: "Widget", price: 999, stock: 
 await client.purchase({ product_id: product.id, qty: 1 });
 ```
 
+### React Hooks (`sdk/react.ts`)
+
+Generated alongside the SDK. Typed hooks for every entity and capability, with no external dependencies (uses React's built-in `useState` / `useEffect`).
+
+```tsx
+import { ApiProvider, useListProduct, useCreateProduct, useCapabilityPurchase } from "./sdk/react";
+
+function App() {
+  return (
+    <ApiProvider client={{ baseUrl: "http://localhost:3000", getToken: () => localStorage.getItem("token") }}>
+      <ProductList />
+    </ApiProvider>
+  );
+}
+
+function ProductList() {
+  const { data, loading, error, refetch } = useListProduct();
+  const createProduct = useCreateProduct();
+  const purchase = useCapabilityPurchase();
+
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+
+  return (
+    <ul>
+      {data?.items.map(p => (
+        <li key={p.id}>{p.name} — ${p.price}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
 ### Zod Schemas (`src/schemas.ts`)
 
 Runtime validation schemas for all models and capability inputs, with constraint mapping.
@@ -319,7 +363,12 @@ const input = ShopServicePurchaseInputSchema.parse(req.body);
 
 ### Notification Service (`src/notify.ts`)
 
-Pluggable email notifications on event emissions. Set `NOTIFY_PROVIDER=resend` or `sendgrid` in `.env` and implement recipient lookup.
+Pluggable email notifications on event emissions. Configure via env:
+
+- `NOTIFY_PROVIDER=log` (default — prints to console)
+- `NOTIFY_PROVIDER=resend` — sends through [Resend](https://resend.com) (set `NOTIFY_API_KEY`)
+- `NOTIFY_PROVIDER=sendgrid` — sends through SendGrid (set `NOTIFY_API_KEY`)
+- `NOTIFY_PROVIDER=webhook` — POSTs JSON to `NOTIFY_WEBHOOK_URL`. Set `NOTIFY_WEBHOOK_SECRET` to enable HMAC-SHA256 signing in the `X-BoneScript-Signature` header.
 
 ### Cron Jobs (`src/cron.ts`)
 
@@ -435,7 +484,7 @@ examples/       Example .bone programs
 
 ## Status
 
-Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.7.0.
+Published to npm as [`bonescript-compiler`](https://www.npmjs.com/package/bonescript-compiler) v0.8.0.
 
 The compiler pipeline is complete and deterministic. All generated code compiles and runs. The VS Code extension provides real-time feedback.
 

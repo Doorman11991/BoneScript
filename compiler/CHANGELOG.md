@@ -4,6 +4,52 @@ All notable changes to `bonescript-compiler` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-05-16
+
+### Added
+- **SQLite target** (`--target sqlite`). Generates a self-contained backend
+  with no external services — no Postgres, no Redis, no Docker. The whole
+  database is one file. Includes a `better-sqlite3` driver, schema migrations,
+  audit log, and event outbox. Ideal for local development, demos, and small
+  single-node deployments. Run:
+  ```bash
+  bonec compile app.bone --target sqlite
+  cd output-sqlite && npm install && npm run migrate && npm run dev
+  ```
+  The DB client wraps `better-sqlite3` and translates Postgres-style `$N`
+  placeholders to `?`, with `RETURNING *` emulation, so the same generated
+  route handlers work across both targets.
+- **Webhook notification provider** (`NOTIFY_PROVIDER=webhook`). Posts event
+  payloads as `application/json` to `NOTIFY_WEBHOOK_URL`. Sets
+  `X-BoneScript-Event` and an `X-BoneScript-Signature` header (HMAC-SHA256
+  of the body when `NOTIFY_WEBHOOK_SECRET` is set). Receivers can verify
+  authenticity with the same secret. Rejects non-`http(s)` URLs.
+- **React hooks SDK** (`sdk/react.ts`). Generated alongside `sdk/client.ts`
+  whenever the SDK target runs. Provides typed hooks: `useList<Entity>`,
+  `use<Entity>(id)`, `useCreate<Entity>`, `useUpdate<Entity>`,
+  `useDelete<Entity>`, plus `useCapability<Name>` for each capability.
+  Includes an `<ApiProvider>` for client injection. Zero external
+  dependencies — uses React's built-in `useState` / `useEffect` so consumers
+  pick their own data layer (react-query, SWR, plain).
+
+### Tests
+- `test_sqlite.ts` boots a real SQLite database, runs the generated
+  migrations, and exercises CRUD via `better-sqlite3` (15 assertions).
+- `test_notify.ts` spins a mock HTTP server, points the webhook at it, and
+  verifies HMAC signing, header propagation, and URL validation
+  (14 assertions).
+- `test_react.ts` runs `tsc --noEmit` against the generated `react.ts` with
+  real React types installed, and asserts every hook is emitted (18
+  assertions).
+- All previous tests continue to pass.
+
+### Notes for downstream consumers
+- The SQLite target output goes to `output-sqlite/` (siblling of `output/`)
+  so it doesn't conflict with the default Express target.
+- `sdk/react.ts` is only emitted when `--no-sdk` is not set.
+- The webhook provider does not retry on its own — pair with `EVENT_MODE=durable`
+  if you need at-least-once delivery semantics.
+
 ## [0.7.0] - 2026-05-16
 
 ### Added

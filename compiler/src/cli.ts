@@ -14,6 +14,7 @@ import { ConstraintSolver } from "./solver";
 import { FullEmitter } from "./emit_full";
 import { NakamaEmitter } from "./emit_nakama";
 import { PrismaEmitter } from "./emit_prisma";
+import { SqliteEmitter } from "./emit_sqlite";
 import { Verifier } from "./verifier";
 import { ModuleLoader } from "./module_loader";
 import { Formatter } from "./formatter";
@@ -79,7 +80,7 @@ function main() {
 }
 
 function showHelp() {
-  console.log("BoneScript compiler v0.7.0");
+  console.log("BoneScript compiler v0.8.0");
   console.log("");
   console.log("Usage:");
   console.log("  bonec compile <file> [--target <target>]  Compile to runnable project");
@@ -95,7 +96,7 @@ function showHelp() {
   console.log("");
   console.log("compile options:");
   console.log("  --target <name>        Output target (default: express)");
-  console.log("                         Options: express, nakama, prisma");
+  console.log("                         Options: express, nakama, prisma, sqlite");
   console.log("  --no-sdk               Skip SDK generation");
   console.log("  --no-openapi           Skip OpenAPI spec generation");
   console.log("  --no-seed              Skip seed file generation");
@@ -283,7 +284,7 @@ function runInit(args: string[]) {
 
 function runCompile(source: string, resolved: string, extraArgs: string[] = []) {
   // Parse --target flag (default: express)
-  let target: "express" | "nakama" | "prisma" = "express";
+  let target: "express" | "nakama" | "prisma" | "sqlite" = "express";
   // Parse optional feature flags (future enhancement — documented for now)
   let _noSdk = false;
   let _noOpenApi = false;
@@ -291,8 +292,8 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
   for (let i = 0; i < extraArgs.length; i++) {
     if (extraArgs[i] === "--target" && extraArgs[i + 1]) {
       const t = extraArgs[i + 1];
-      if (t !== "express" && t !== "nakama" && t !== "prisma") {
-        console.error(`Unknown target '${t}'. Valid targets: express, nakama, prisma`);
+      if (t !== "express" && t !== "nakama" && t !== "prisma" && t !== "sqlite") {
+        console.error(`Unknown target '${t}'. Valid targets: express, nakama, prisma, sqlite`);
         process.exit(1);
       }
       target = t;
@@ -313,6 +314,11 @@ function runCompile(source: string, resolved: string, extraArgs: string[] = []) 
 
   if (target === "prisma") {
     runCompilePrisma(source, resolved);
+    return;
+  }
+
+  if (target === "sqlite") {
+    runCompileSqlite(source, resolved);
     return;
   }
 
@@ -892,6 +898,63 @@ function runValidate(args: string[]) {
     console.error(``);
     console.error(`To see all errors, run:`);
     console.error(`  cd ${outputDir} && npx tsc --noEmit`);
+    process.exit(1);
+  }
+}
+
+
+// ─── Compile (SQLite target) ──────────────────────────────────────────────────
+
+function runCompileSqlite(source: string, resolved: string) {
+  try {
+    const tokens = new Lexer(source).tokenize();
+    console.log(`  [1/5] Lexed: ${tokens.length} tokens`);
+
+    const loader = new ModuleLoader();
+    const loadResult = loader.load(resolved);
+    if (loadResult.errors.length > 0) {
+      for (const e of loadResult.errors.slice(0, 10)) {
+        console.log(`         ${path.basename(e.file)}: ${e.error.message}`);
+      }
+      if (!loadResult.ast) process.exit(1);
+    }
+    const ast = loadResult.ast!;
+    console.log(`  [2/5] Parsed: ${ast.systems.length} system(s)`);
+
+    const typeErrors = new TypeChecker().check(ast);
+    if (typeErrors.length > 0) {
+      console.log(`  [3/5] Type check: ${typeErrors.length} error(s)`);
+      for (const err of typeErrors) {
+        console.log(`         ${err.code} at ${err.loc.line}:${err.loc.column}: ${err.message}`);
+      }
+    } else {
+      console.log(`  [3/5] Type check: v (0 errors)`);
+    }
+
+    const sourceHash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+    const irSystems = new Lowering().lower(ast, sourceHash);
+    console.log(`  [4/5] Lowered to IR: ${irSystems.reduce((s, sys) => s + sys.modules.length, 0)} modules`);
+
+    const emitter = new SqliteEmitter();
+    const allFiles: ReturnType<typeof emitter.emit> = [];
+    for (const sys of irSystems) {
+      allFiles.push(...emitter.emit(sys));
+    }
+    console.log(`  [5/5] SQLite emit: ${allFiles.length} file(s)`);
+
+    const outputDir = path.resolve(path.dirname(resolved), "output-sqlite");
+    for (const f of allFiles) {
+      const outPath = path.join(outputDir, f.path);
+      const dir = path.dirname(outPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(outPath, f.content, "utf-8");
+    }
+
+    console.log(`\nv SQLite compilation complete. ${allFiles.length} file(s) written to output-sqlite/`);
+    console.log(`\nNext steps:`);
+    console.log(`  cd output-sqlite && npm install && npm run migrate`);
+  } catch (e: any) {
+    console.error(`x ${e.message}`);
     process.exit(1);
   }
 }
