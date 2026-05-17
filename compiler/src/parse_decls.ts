@@ -1,5 +1,5 @@
 /**
- * BoneScript Declaration Parsers
+ * MarrowScript Declaration Parsers
  */
 
 import { TokenKind } from "./lexer";
@@ -68,9 +68,9 @@ export function parseField(s: TokenStream): AST.FieldNode {
 
 export function parseIdentList(s: TokenStream): string[] {
   const ids: string[] = [];
-  ids.push(s.expect(TokenKind.Identifier, "identifier").value);
+  ids.push(parseIdentOrKeyword(s));
   while (s.match(TokenKind.Comma)) {
-    ids.push(s.expect(TokenKind.Identifier, "identifier").value);
+    ids.push(parseIdentOrKeyword(s));
   }
   return ids;
 }
@@ -234,7 +234,7 @@ export function parseCapabilityDecl(s: TokenStream): AST.CapabilityDeclNode {
     kind: "CapabilityDecl", loc, name, params,
     requires: [], effects: [], emits: [],
     sync: null, timeout: null, retry: null, idempotent: null,
-    pipeline: null, algorithm: null, returns: null,
+    pipeline: null, algorithm: null, cognition: null, returns: null,
   };
 
   while (!s.check(TokenKind.RBrace) && !s.check(TokenKind.EOF)) {
@@ -284,6 +284,9 @@ export function parseCapabilityDecl(s: TokenStream): AST.CapabilityDeclNode {
         break;
       case TokenKind.KwAlgorithm:
         node.algorithm = parseAlgorithm(s);
+        break;
+      case TokenKind.KwCognition:
+        node.cognition = parseCognition(s);
         break;
       default:
         throw new ParseError(`Unexpected in capability: ${tok.kind}`, tok.loc);
@@ -353,12 +356,16 @@ export function parsePipeline(s: TokenStream, parallel: boolean = false): AST.Pi
   s.expect(TokenKind.Colon, ":");
   s.expect(TokenKind.LBrace, "{");
 
-  const steps: AST.PipelineStepNode[] = [];
+  const steps: AST.PipelineStepLike[] = [];
   let onError: AST.PipelineErrorHandler | null = null;
 
   while (!s.check(TokenKind.RBrace) && !s.check(TokenKind.EOF)) {
     if (s.check(TokenKind.KwOnError)) {
       onError = parsePipelineErrorHandler(s);
+      continue;
+    }
+    if (s.check(TokenKind.KwMatch)) {
+      steps.push(parsePipelineMatch(s));
       continue;
     }
     steps.push(parsePipelineStep(s));
@@ -387,6 +394,58 @@ function parsePipelineStep(s: TokenStream): AST.PipelineStepNode {
 
   const call: AST.CallExprNode = { kind: "CallExpr", loc, name, args };
   return { kind: "PipelineStep", loc, call, bindAs };
+}
+
+/**
+ * Phase 11: parse a match step.
+ *
+ *   match <expr> {
+ *     case "lit":  some_call(args) as alias
+ *     case 0.7:    other_call(args) as alias
+ *     default:     fallback(args) as alias
+ *   }
+ *
+ * Each arm body is a regular pipeline step (call + optional bindAs). The
+ * default arm is optional but recommended; without it, an unmatched key
+ * at runtime throws a typed pipeline error.
+ */
+function parsePipelineMatch(s: TokenStream): AST.PipelineMatchNode {
+  const loc = s.peek().loc;
+  s.expect(TokenKind.KwMatch, "match");
+  const key = parseExpr(s);
+  s.expect(TokenKind.LBrace, "{");
+
+  const cases: AST.PipelineMatchCase[] = [];
+  let defaultArm: AST.PipelineStepNode | null = null;
+
+  while (!s.check(TokenKind.RBrace) && !s.check(TokenKind.EOF)) {
+    if (s.check(TokenKind.KwDefault)) {
+      s.advance();
+      s.expect(TokenKind.Colon, ":");
+      defaultArm = parsePipelineStep(s);
+      continue;
+    }
+    s.expect(TokenKind.KwCase, "case");
+    // Read either a string literal or a numeric literal.
+    const lit = s.peek();
+    let literal: string;
+    let literalKind: "string" | "number";
+    if (lit.kind === TokenKind.StringLiteral) {
+      literal = s.advance().value;
+      literalKind = "string";
+    } else if (lit.kind === TokenKind.IntLiteral || lit.kind === TokenKind.FloatLiteral) {
+      literal = s.advance().value;
+      literalKind = "number";
+    } else {
+      throw new Error(`Parse error at ${lit.loc.line}:${lit.loc.column}: expected string or number literal in match case, got ${lit.kind}`);
+    }
+    s.expect(TokenKind.Colon, ":");
+    const arm = parsePipelineStep(s);
+    cases.push({ literal, literalKind, arm });
+  }
+
+  s.expect(TokenKind.RBrace, "}");
+  return { kind: "PipelineMatch", loc, key, cases, defaultArm };
 }
 
 function parsePipelineErrorHandler(s: TokenStream): AST.PipelineErrorHandler {
@@ -436,4 +495,30 @@ export function parseAlgorithm(s: TokenStream): AST.AlgorithmNode {
   }
 
   return { kind: "Algorithm", loc, name, using };
+}
+
+// ─── Cognition (LLM Harness, Phase 1) ────────────────────────────────────────
+// Mirrors parseAlgorithm. The cognition catalog is closed; the type checker
+// rejects unknown names. Bindings reuse AlgorithmBinding for shape parity.
+
+export function parseCognition(s: TokenStream): AST.CognitionNode {
+  const loc = s.peek().loc;
+  s.expect(TokenKind.KwCognition, "cognition");
+  s.expect(TokenKind.Colon, ":");
+  const name = s.expect(TokenKind.Identifier, "cognition primitive name").value;
+  const using: AST.AlgorithmBinding[] = [];
+
+  if (s.match(TokenKind.KwUsing)) {
+    s.expect(TokenKind.LBrace, "{");
+    while (!s.check(TokenKind.RBrace) && !s.check(TokenKind.EOF)) {
+      const param = s.expect(TokenKind.Identifier, "param name").value;
+      s.expect(TokenKind.Colon, ":");
+      const value = parseExpr(s);
+      using.push({ param, value });
+      if (!s.match(TokenKind.Comma)) break;
+    }
+    s.expect(TokenKind.RBrace, "}");
+  }
+
+  return { kind: "Cognition", loc, name, using };
 }

@@ -14,9 +14,28 @@ export class ParseError extends Error {
 export class TokenStream {
   private tokens: Token[];
   private pos: number = 0;
+  private loopGuard: number = 0;
+  private static MAX_ITERATIONS = 50000;
 
   constructor(tokens: Token[]) {
     this.tokens = tokens;
+  }
+
+  /** Call at the top of any while loop to detect infinite loops */
+  guardLoop(): void {
+    this.loopGuard++;
+    if (this.loopGuard > TokenStream.MAX_ITERATIONS) {
+      const t = this.peek();
+      throw new ParseError(
+        `Parser stuck (exceeded ${TokenStream.MAX_ITERATIONS} iterations). Last token: ${t.kind} '${t.value}'`,
+        t.loc
+      );
+    }
+  }
+
+  /** Reset loop guard (call when entering a new parse context) */
+  resetGuard(): void {
+    this.loopGuard = 0;
   }
 
   peek(offset: number = 0): Token {
