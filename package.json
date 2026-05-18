@@ -1,14 +1,23 @@
 {
   "name": "bonescript-compiler",
-  "version": "0.14.4",
+  "version": "0.14.5",
   "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
   "main": "compiler/dist/index.js",
   "types": "compiler/dist/index.d.ts",
   "bin": {
     "bonec": "compiler/dist/cli.js"
   },
-  "files": ["compiler/dist", "compiler/package.json"],
-  "keywords": ["bonescript", "compiler", "code-generation", "backend", "declarative"],
+  "files": [
+    "compiler/dist",
+    "compiler/package.json"
+  ],
+  "keywords": [
+    "bonescript",
+    "compiler",
+    "code-generation",
+    "backend",
+    "declarative"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
