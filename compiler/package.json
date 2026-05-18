@@ -1,6 +1,6 @@
 {
   "name": "bonescript-compiler",
-  "version": "0.14.3",
+  "version": "0.14.4",
   "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,14 +8,11 @@
     "bonec": "dist/cli.js"
   },
   "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
+    "dist"
   ],
   "scripts": {
-    "build": "node node_modules/typescript/bin/tsc",
-    "start": "ts-node src/cli.ts",
-    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts && ts-node src/test_nakama.ts && ts-node src/test_sqlite.ts && ts-node src/test_notify.ts && ts-node src/test_react.ts && ts-node src/test_prisma.ts && ts-node src/test_relations.ts"
+    "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts && ts-node src/test_nakama.ts && ts-node src/test_sqlite.ts && ts-node src/test_notify.ts && ts-node src/test_react.ts && ts-node src/test_prisma.ts && ts-node src/test_relations.ts",
+    "start": "node dist/cli.js"
   },
   "keywords": [
     "bonescript",
