@@ -1,6 +1,6 @@
 {
   "name": "bonescript-compiler",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "BoneScript compiler — compile .bone system descriptions into complete, runnable Node.js backends",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,8 +25,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "prepare": "npm run build",
+    "build": "npx tsc",
+    "prepare": "npx tsc",
     "prepublishOnly": "npm run build",
     "start": "ts-node src/cli.ts",
     "test": "ts-node src/test.ts && ts-node src/test_typechecker.ts && ts-node src/test_nakama.ts && ts-node src/test_sqlite.ts && ts-node src/test_notify.ts && ts-node src/test_react.ts && ts-node src/test_prisma.ts && ts-node src/test_relations.ts"
@@ -58,5 +58,8 @@
     "@types/node": "18.19.0",
     "ts-node": "10.9.2",
     "typescript": "5.3.3"
+  },
+  "dependencies": {
+    "typescript": "^5.3.3"
   }
 }
