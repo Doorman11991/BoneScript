@@ -8,8 +8,8 @@
     "bonec": "compiler/dist/cli.js"
   },
   "scripts": {
-    "build": "cd compiler && npm run build",
-    "prepare": "cd compiler && npm run build",
+    "build": "cd compiler && npm install --ignore-scripts && npm run build",
+    "prepare": "cd compiler && npm install --ignore-scripts && npm run build",
     "test": "cd compiler && npm test"
   },
   "keywords": ["bonescript", "compiler", "code-generation", "backend", "declarative"],
